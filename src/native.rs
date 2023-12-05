@@ -1,7 +1,5 @@
 // BLS Native
 
-use std::arch::aarch64::vld1_dup_f32;
-use std::fmt::Debug;
 use std::ops::{Add, Sub, Neg, Mul, Div};
 
 use std::{str::FromStr, vec};
@@ -9,8 +7,14 @@ use std::{str::FromStr, vec};
 
 use num_bigint::{BigUint, BigInt, Sign, ToBigInt};
 
+use crate::big_arithmetic::{big_add, big_less_than, self};
+
 pub fn modulus() -> BigUint {
     BigUint::from_str("4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787").unwrap()
+}
+
+pub fn modulus_digits() -> Vec<u32> {
+    modulus().to_u32_digits()
 }
 
 pub fn get_bls_12_381_parameter() -> BigUint {
@@ -164,10 +168,20 @@ impl Sub for Fp {
 }
 
 pub fn add_fp(x: Fp, y: Fp) -> Fp {
-    let x_b = BigUint::new(x.0.try_into().unwrap());
-    let y_b = BigUint::new(y.0.try_into().unwrap());
-    let z = (x_b + y_b).modpow(&BigUint::from_str("1").unwrap(), &modulus());
-    Fp(get_u32_vec_from_literal(z))
+    // let x_b = BigUint::new(x.0.try_into().unwrap());
+    // let y_b = BigUint::new(y.0.try_into().unwrap());
+    // let z = (x_b + y_b).modpow(&BigUint::from_str("1").unwrap(), &modulus());
+    // Fp(get_u32_vec_from_literal(z))
+    let x_plus_y = big_add(&x.0, &y.0);
+    let mut m = modulus_digits();
+    m.push(0);
+    if big_less_than(&x_plus_y, &m) {
+        Fp(x_plus_y[..12].try_into().unwrap())
+    } else {
+        let (x_plus_y_reduce, _) = big_arithmetic::big_sub(&x_plus_y, &m);
+        Fp(x_plus_y_reduce[..12].try_into().unwrap())
+    }
+    // todo!()
 }
 
 pub fn mul_fp(x: Fp, y: Fp) -> Fp {
