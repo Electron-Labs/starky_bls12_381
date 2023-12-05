@@ -1,12 +1,13 @@
 // BLS Native
 
+use std::arch::aarch64::vld1_dup_f32;
+use std::fmt::Debug;
 use std::ops::{Add, Sub, Neg, Mul, Div};
 
 use std::{str::FromStr, vec};
 
-use hex::FromHex;
 
-use num_bigint::BigUint;
+use num_bigint::{BigUint, BigInt, Sign, ToBigInt};
 
 pub fn modulus() -> BigUint {
     BigUint::from_str("4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787").unwrap()
@@ -16,18 +17,42 @@ pub fn get_bls_12_381_parameter() -> BigUint {
     BigUint::from_str("15132376222941642752").unwrap()
 }
 
-pub fn egcd(a: BigUint, b: BigUint) -> (BigUint, BigUint, BigUint) {
-    if a == BigUint::from(0 as u32){
-        (b, BigUint::from(0 as u32), BigUint::from(1 as u32))
-    } else {
-        let (g, y, x) = egcd(b.clone()%a.clone(), a.clone());
-        (g, x - (b.clone()*(y.clone()/a.clone())), y)
+pub fn egcd(a: BigUint, b: BigUint) -> BigUint {
+    // if a == BigUint::from(0 as u32){
+    //     (b, BigUint::from(0 as u32), BigUint::from(1 as u32))
+    // } else {
+    //     let (g, y, x) = egcd(b.clone()%a.clone(), a.clone());
+    //     (g, x - (b.clone()*(y.clone()/a.clone())), y)
+    // }
+    let mut a_ = BigInt::from_biguint(Sign::Plus, a);
+    let mut b_ = BigInt::from_biguint(Sign::Plus, b);
+
+    let mut x = BigInt::from_str("0").unwrap();
+    let mut y = BigInt::from_str("1").unwrap();
+    let mut u = BigInt::from_str("1").unwrap();
+    let mut v = BigInt::from_str("0").unwrap();
+
+    let zero = BigInt::from_str("0").unwrap();
+    while a_ != zero {
+        let q = b_.clone()/a_.clone();
+        let r = b_%a_.clone();
+        let m = x-(u.clone()*q.clone());
+        let n = y-(v.clone()*q);
+        b_ = a_;
+        a_ = r;
+        x = u;
+        y = v;
+        u = m;
+        v = n;
     }
+    // println!("x {:?}", x);
+    let mod_bigint = modulus().to_bigint().unwrap();
+    ((x%mod_bigint.clone())+mod_bigint).to_biguint().unwrap()
 }
 
 pub fn mod_inverse(a: BigUint, m: BigUint) -> BigUint {
-    let (g, x, y) = egcd(a, m.clone());
-    x % m
+    egcd(a, m.clone())
+    // x % m
 }
 
 pub fn fp4_square(a: Fp2, b: Fp2) -> (Fp2, Fp2) {
@@ -39,7 +64,15 @@ pub fn fp4_square(a: Fp2, b: Fp2) -> (Fp2, Fp2) {
     )
 }
 
-#[derive(Clone, Copy, Debug)]
+pub fn get_u32_vec_from_literal(x: BigUint) -> [u32; 12] {
+    let mut x_u32_vec: Vec<u32> = x.to_u32_digits();
+    while x_u32_vec.len() != 12 {
+        x_u32_vec.push(0 as u32);
+    }
+    x_u32_vec.try_into().unwrap()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Fp(pub(crate) [u32; 12]);
 
 impl Fp {
@@ -54,7 +87,7 @@ impl Fp {
     }
 
     pub fn get_fp_from_biguint(x: BigUint) -> Fp {
-        Fp(x.to_u32_digits().try_into().unwrap())
+        Fp(get_u32_vec_from_literal(x))
     }
 
     pub fn get_bitlen(&self) -> u64 {
@@ -63,6 +96,17 @@ impl Fp {
 
     pub fn get_bit(&self, idx: u64) -> bool {
         BigUint::new(self.0.try_into().unwrap()).bit(idx)
+    }
+
+    pub fn invert(&self) -> Self {
+        let rhs_buint = BigUint::new(self.0.try_into().unwrap());
+        let inv = mod_inverse(rhs_buint, modulus());
+        // println!("inv {:?}", inv);
+        Fp::get_fp_from_biguint(inv)
+    }
+
+    pub fn to_biguint(&self) -> BigUint {
+        BigUint::new(self.0.to_vec())
     }
 }
 
@@ -80,10 +124,7 @@ impl Add for Fp {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        let x_b = BigUint::new(self.0.try_into().unwrap());
-        let y_b = BigUint::new(rhs.0.try_into().unwrap());
-        let z = (x_b + y_b).modpow(&BigUint::from_str("1").unwrap(), &modulus());
-        Fp(z.to_u32_digits().try_into().unwrap())
+        add_fp(self, rhs)
     }
 }
 
@@ -91,10 +132,11 @@ impl Mul for Fp {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        let x_b = BigUint::new(self.0.try_into().unwrap());
-        let y_b = BigUint::new(rhs.0.try_into().unwrap());
-        let z = (x_b * y_b).modpow(&BigUint::from_str("1").unwrap(), &modulus());
-        Fp(z.to_u32_digits().try_into().unwrap())
+        // let x_b = BigUint::new(self.0.try_into().unwrap());
+        // let y_b = BigUint::new(rhs.0.try_into().unwrap());
+        // let z = (x_b * y_b).modpow(&BigUint::from_str("1").unwrap(), &modulus());
+        // Fp(get_u32_vec_from_literal(z))
+        mul_fp(self, rhs)
     }
 }
 
@@ -103,7 +145,7 @@ impl Neg for Fp {
 
     fn neg(self) -> Self::Output {
         let X: BigUint = BigUint::new(self.0.try_into().unwrap());
-        Fp((modulus()-X).to_u32_digits().try_into().unwrap())
+        Fp(get_u32_vec_from_literal(modulus()-X))
     }
 }
 
@@ -113,10 +155,11 @@ impl Sub for Fp {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        let x_b = BigUint::new(self.0.try_into().unwrap());
-        let y_b = BigUint::new(rhs.0.try_into().unwrap());
-        let z = (x_b - y_b + modulus()).modpow(&BigUint::from_str("1").unwrap(), &modulus());
-        Fp(z.to_u32_digits().try_into().unwrap())
+        // let x_b = BigUint::new(self.0.try_into().unwrap());
+        // let y_b = BigUint::new(rhs.0.try_into().unwrap());
+        // let z = (x_b - y_b + modulus()).modpow(&BigUint::from_str("1").unwrap(), &modulus());
+        // Fp(get_u32_vec_from_literal(z))
+        sub_fp(self, rhs)
     }
 }
 
@@ -124,26 +167,30 @@ pub fn add_fp(x: Fp, y: Fp) -> Fp {
     let x_b = BigUint::new(x.0.try_into().unwrap());
     let y_b = BigUint::new(y.0.try_into().unwrap());
     let z = (x_b + y_b).modpow(&BigUint::from_str("1").unwrap(), &modulus());
-    Fp(z.to_u32_digits().try_into().unwrap())
+    Fp(get_u32_vec_from_literal(z))
 }
 
 pub fn mul_fp(x: Fp, y: Fp) -> Fp {
+    //println!("sub_fp x{:?}, y{:?}", x, y);
     let x_b = BigUint::new(x.0.try_into().unwrap());
-    let y_b = BigUint::new(x.0.try_into().unwrap());
+    let y_b = BigUint::new(y.0.try_into().unwrap());
     let z = (x_b * y_b).modpow(&BigUint::from_str("1").unwrap(), &modulus());
-    Fp(z.to_u32_digits().try_into().unwrap())
+    //println!("z {:?} {:?}", z.to_u32_digits(), z.to_u32_digits().len());
+    Fp(get_u32_vec_from_literal(z))
 }
 
 pub fn negate_fp(x: Fp) -> Fp {
     let X: BigUint = BigUint::new(x.0.try_into().unwrap());
-    Fp((modulus()-X).to_u32_digits().try_into().unwrap())
+    Fp(get_u32_vec_from_literal(modulus()-X))
 }
 
 pub fn sub_fp(x: Fp, y: Fp) -> Fp {
+    // println!("sub_fp x{:?}, y{:?}", x, y);
     let x_b = BigUint::new(x.0.try_into().unwrap());
-    let y_b = BigUint::new(x.0.try_into().unwrap());
-    let z = (x_b - y_b + modulus()).modpow(&BigUint::from_str("1").unwrap(), &modulus());
-    Fp(z.to_u32_digits().try_into().unwrap())
+    let y_b = BigUint::new(y.0.try_into().unwrap());
+    let z = (modulus() + x_b - y_b).modpow(&BigUint::from_str("1").unwrap(), &modulus());
+    // println!("sub_fp::{:?}-{:?}",z.to_u32_digits(), z.to_u32_digits().len());
+    Fp(get_u32_vec_from_literal(z))
 }
 
 pub fn sum_of_products(a: Vec<Fp>, b: Vec<Fp>) -> Fp{
@@ -184,13 +231,25 @@ impl Fp2 {
     pub fn invert(&self) -> Self {
         let re = self.0[0];
         let im = self.0[1];
+        // println!("re {:?}", re);
+        // println!("im {:?}", im);
         let factor_fp = ((re * re) + (im * im));
+        // println!("factor_fp {:?}", factor_fp);
         let factor_bu = BigUint::new(factor_fp.0.try_into().unwrap());
-        let factor = Fp::get_fp_from_biguint(mod_inverse(factor_bu, modulus()));
+        // println!("factor_bu {:?}", factor_bu);
+        let factor = factor_fp.invert();
+        // println!("factor {:?}", factor);
         Fp2([
             factor * re,
             factor * (-im)
         ])
+    }
+
+    pub fn to_biguint(&self) -> [BigUint; 2] {
+        [
+            BigUint::new(self.0[0].0.to_vec()),
+            BigUint::new(self.0[1].0.to_vec()),
+        ]
     }
 }
 
@@ -254,6 +313,8 @@ pub fn add_Fp2(x: Fp2, y: Fp2) -> Fp2 {
 }
 
 pub fn mul_Fp2(x: Fp2, y: Fp2) -> Fp2 {
+    //println!("x:: {:?}", x);
+    //println!("y:: {:?}", y);
     let c0 = sub_fp(mul_fp(x.0[0], y.0[0]),mul_fp(x.0[1], y.0[1]));
     let c1 = add_fp(mul_fp(x.0[0], y.0[1]),mul_fp(x.0[1], y.0[0]));
     Fp2 (
@@ -279,6 +340,15 @@ impl Fp6 {
             (t4 * t1).0,
             (t4 * t2).0,
         ].concat().try_into().unwrap())
+    }
+
+    pub fn print(&self) {
+        println!("--- Printing Fp6 ---");
+        for i in 0..self.0.len() {
+            let fp = Fp::get_fp_from_biguint(BigUint::new(self.0[i].0.to_vec()));
+            println!("i -- {:?}",fp.to_biguint());
+        }
+        println!("--- Printed Fp6 ---");
     }
 }
 
@@ -434,7 +504,7 @@ impl Fp6 {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Fp12([Fp; 12]);
 
 impl Fp12 {
@@ -452,6 +522,24 @@ impl Fp12 {
             (c0*t).0,
             (-(c1*t)).0,
         ].concat().try_into().unwrap())
+    }
+
+    pub fn print(&self) {
+        println!("--- Printing Fp12 ---");
+        for i in 0..self.0.len() {
+            let fp = Fp::get_fp_from_biguint(BigUint::new(self.0[i].0.to_vec()));
+            println!("i -- {:?}",fp.to_biguint());
+        }
+        println!("--- Printed Fp12 ---");
+    }
+
+    pub fn from_str(x: [&str; 12]) -> Self {
+        let mut ans: Fp12 = Fp12::one();
+        for i in 0..12 {
+            let bu = Fp::get_fp_from_biguint(BigUint::from_str(x[i]).unwrap());
+            ans.0[i] = bu;
+        }
+        ans
     }
 }
 
@@ -494,6 +582,12 @@ impl Neg for Fp12 {
         todo!()
     }
 }
+
+// impl Debug for Fp12 {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         f.debug_tuple("Fp12").field(&self.0).finish()
+//     }
+// }
 
 pub fn add_fp12(x: Fp12, y: Fp12) -> Fp12 {
     let mut ans: [Fp; 12] = [Fp::zero(); 12];
@@ -542,6 +636,7 @@ impl Fp2 {
 
 impl Fp6 {
     pub fn forbenius_map(&self, pow: usize) -> Self {
+        println!("--- fp6 forbenius map ---");
         let FP6_FROBENIUS_COEFFICIENTS_1 = [
             Fp2([
                 Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
@@ -595,9 +690,14 @@ impl Fp6 {
                 Fp::get_fp_from_biguint(BigUint::from_str("793479390729215512621379701633421447060886740281060493010456487427281649075476305620758731620351").unwrap()),
             ]),
         ];
+        self.print();
         let c0 = Fp2(self.0[0..2].to_vec().try_into().unwrap());
+        println!("c0 {:?}", c0.to_biguint());
         let c1 = Fp2(self.0[2..4].to_vec().try_into().unwrap());
+        println!("c1 {:?}", c0.to_biguint());
         let c2 = Fp2(self.0[4..6].to_vec().try_into().unwrap());
+        println!("c2 {:?}", c0.to_biguint());
+        println!("--- fp6 forbenius map ---");
         Fp6([
             c0.forbenius_map(pow).0,
             (c1.forbenius_map(pow) * FP6_FROBENIUS_COEFFICIENTS_1[pow%6]).0,
@@ -608,6 +708,7 @@ impl Fp6 {
 
 impl Fp12 {
     pub fn forbenius_map(&self, pow: usize) -> Self {
+        println!(" ---- forbenius - map -----");
         let FP12_FORBENIUS_COEFFICIENTS = [
             Fp2([
                 Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
@@ -659,11 +760,17 @@ impl Fp12 {
             ]),
         ];
         let r0 = Fp6(self.0[0..6].to_vec().try_into().unwrap()).forbenius_map(pow);
-        let c0c1c2 = Fp6(self.0[0..6].to_vec().try_into().unwrap()).forbenius_map(pow);
+        r0.print();
+        let c0c1c2 = Fp6(self.0[6..12].to_vec().try_into().unwrap()).forbenius_map(pow);
+        c0c1c2.print();
         let c0 = Fp2(c0c1c2.0[0..2].to_vec().try_into().unwrap());
+        println!("c0 - {:?}", c0.to_biguint());
         let c1 = Fp2(c0c1c2.0[2..4].to_vec().try_into().unwrap());
+        println!("c1 - {:?}", c1.to_biguint());
         let c2 = Fp2(c0c1c2.0[4..6].to_vec().try_into().unwrap());
+        println!("c2 - {:?}", c2.to_biguint());
         let coeff = FP12_FORBENIUS_COEFFICIENTS[pow % 12];
+        println!("coeff - {:?}", coeff.to_biguint());
         Fp12([
             r0.0,
             [(c0*coeff).0, (c1*coeff).0, (c2*coeff).0].concat().try_into().unwrap()
@@ -725,7 +832,7 @@ impl Fp12 {
 
     pub fn cyclotocmicExponent(&self) -> Fp12 {
         let mut z = Fp12::one();
-        for i in (0..get_bls_12_381_parameter().bits()-1).rev() {
+        for i in (0..get_bls_12_381_parameter().bits()).rev() {
             z = z.cyclotomicSquare();
             if get_bls_12_381_parameter().bit(i) {
                 z = z * self.clone();
@@ -735,19 +842,44 @@ impl Fp12 {
     }
 
     pub fn final_exponentiate(&self) -> Self{
+        println!("master self");
+        self.print();
         let t0 = self.forbenius_map(6) / self.clone();
+        println!("--- t0 ---");
+        t0.print();
         let t1 = t0.forbenius_map(2) * t0;
+        println!("--- t1 ---");
+        t1.print();
         let t2 = t1.cyclotocmicExponent().conjugate();
+        println!("--- t2 ---");
+        t2.print();
         let t3 = t1.cyclotomicSquare().conjugate() * t2;
+        println!("--- t3 ---");
+        t3.print();
         let t4 = t3.cyclotocmicExponent().conjugate();
+        println!("--- t4 ---");
+        t4.print();
         let t5 = t4.cyclotocmicExponent().conjugate();
+        println!("--- t5 ---");
+        t5.print();
         let t6 = t5.cyclotocmicExponent().conjugate() * t2.cyclotomicSquare();
+        println!("--- t6 ---");
+        t6.print();
         let t7 = t6.cyclotocmicExponent().conjugate();
-        
+        println!("--- t7 ---");
+        t7.print();
         let t2_t5_pow_q2 = (t2*t5).forbenius_map(2);
+        println!("--- t2_t5_pow_q2 ---");
+        t2_t5_pow_q2.print();
         let t4_t1_pow_q3 = (t4*t1).forbenius_map(3);
+        println!("--- t4_t1_pow_q3 ---");
+        t4_t1_pow_q3.print();
         let t6_t1c_pow_q1 = (t6*t1.conjugate()).forbenius_map(1);
+        println!("--- t6_t1c_pow_q1 ---");
+        t6_t1c_pow_q1.print();
         let t7_t3c_t1 = (t7*t3.conjugate())*(t1);
+        println!("--- t7_t3c_t1 ---");
+        t7_t3c_t1.print();
         // (t2 * t5)^(q²) * (t4 * t1)^(q³) * (t6 * t1.conj)^(q^1) * t7 * t3.conj * t1
         return t2_t5_pow_q2*t4_t1_pow_q3*t6_t1c_pow_q1*t7_t3c_t1
     }
@@ -763,9 +895,13 @@ pub fn inverse_fp2(x: Fp2) -> Fp2 {
 }
 
 
-pub fn calc_pairing_precomp(x: Fp2, y: Fp2) -> Vec<[Fp2; 3]> {
-    let Qx = x.clone();
-    let Qy = y.clone();
+pub fn calc_pairing_precomp(x: Fp2, y: Fp2, z: Fp2) -> Vec<[Fp2; 3]> {
+    println!("z_invert {:?}", z.invert());
+    let ax = x*(z.invert());
+    let ay = y*(z.invert());
+
+    let Qx = ax.clone();
+    let Qy = ay.clone();
     let Qz = Fp2::one();
 
     let mut Rx = Qx.clone();
@@ -774,51 +910,86 @@ pub fn calc_pairing_precomp(x: Fp2, y: Fp2) -> Vec<[Fp2; 3]> {
 
     let mut ell_coeff: Vec<[Fp2; 3]> = Vec::<[Fp2; 3]>::new();
 
-    for i in (0..get_bls_12_381_parameter().bits()-2).rev() {
+    for i in (0..get_bls_12_381_parameter().bits()-1).rev() {
+        println!("i -- {:?}", i);
+        // println!("Rx {:?}", Rx.to_biguint());
+        // println!("Ry {:?}", Ry.to_biguint());
+        // println!("Rz {:?}", Rz.to_biguint());
         let t0 = Ry * Ry;
+        // println!("t0 {:?}", t0.to_biguint());
         let t1 = Rz * Rz;
+        // println!("t1 {:?}", t1.to_biguint());
         let t2 = t1.mul(Fp::get_fp_from_biguint(BigUint::from(3 as u32))).multiply_by_B();
+        // println!("t2 {:?}", t2.to_biguint());
         let t3 = t2.mul(Fp::get_fp_from_biguint(BigUint::from(3 as u32)));
+        // println!("t3 {:?}", t3.to_biguint());
         let t4 = Ry*Ry + Rz*Rz + (Ry * Rz).mul(Fp::get_fp_from_biguint(BigUint::from(2 as u32)))-t1-t0;
+        // println!("t4 {:?}", t4.to_biguint());
         ell_coeff.push(
             [t2-t0, (Rx*Rx).mul(Fp::get_fp_from_biguint(BigUint::from(3 as u32))), -t4]
         );
+        // println!("ell_coeff_0_0 {:?}", ell_coeff[0][0].to_biguint());
+        // println!("ell_coeff_0_1 {:?}", ell_coeff[0][1].to_biguint());
+        // println!("ell_coeff_0_2 {:?}", ell_coeff[0][2].to_biguint());
         Rx = (t0 - t3)*Rx*Ry*Fp::get_fp_from_biguint(mod_inverse(BigUint::from(2 as u32), modulus()));
         Ry = 
         ((t0+t3)*Fp::get_fp_from_biguint(mod_inverse(BigUint::from(2 as u32), modulus()))) * 
         ((t0+t3)*Fp::get_fp_from_biguint(mod_inverse(BigUint::from(2 as u32), modulus()))) - 
         t2*t2*Fp::get_fp_from_biguint(BigUint::from(3 as u32));
         Rz = t0 * t4;
+        // println!("Rx_ {:?}", Rx.to_biguint());
+        // println!("Ry_ {:?}", Ry.to_biguint());
+        // println!("Rz_ {:?}", Rz.to_biguint());
         if get_bls_12_381_parameter().bit(i) {
             let t0 = Ry - (Qy * Rz);
+            // println!("t0__ {:?}", t0.to_biguint());
             let t1 = Rx - (Qx * Rz);
+            // println!("t1__ {:?}", t1.to_biguint());
             ell_coeff.push([
                 (t0 * Qx) - (t1 * Qy),
                 -t0,
                 t1
             ]);
+            // println!("ell_coeff_1_0 {:?}", ell_coeff[1][0].to_biguint());
+            // println!("ell_coeff_1_1 {:?}", ell_coeff[1][1].to_biguint());
+            // println!("ell_coeff_1_2 {:?}", ell_coeff[1][2].to_biguint());
             let t2 = t1*t1;
+            // println!("t2__ {:?}", t2.to_biguint());
             let t3 = t2 * t1;
+            // println!("t3__ {:?}", t3.to_biguint());
             let t4 = t2* Rx;
-            let t5 = t3 - (t4 * Fp::get_fp_from_biguint(BigUint::from(3 as u32))) + (t0 * t0 * Rz);
+            // println!("t4__ {:?}", t4.to_biguint());
+            let t5 = t3 - (t4 * Fp::get_fp_from_biguint(BigUint::from(2 as u32))) + (t0 * t0 * Rz);
+            // println!("t5__ {:?}", t5.to_biguint());
             Rx = t1 * t5;
             Ry = (t4 - t5) * t0 - (t3 * Ry);
             Rz = Rz * t3;
+            // println!("Rx__ {:?}", Rx.to_biguint());
+            // println!("Ry__ {:?}", Ry.to_biguint());
+            // println!("Rz__ {:?}", Rz.to_biguint());
         }
+        // println!("len --{:?}", ell_coeff.len());
     }
     return ell_coeff;
 }
 
 
-pub fn miller_loop(g1_x: Fp, g1_y: Fp, g2_x: Fp2, g2_y: Fp2) -> Fp12 {
-    let precomputes = calc_pairing_precomp(g2_x, g2_y);
+pub fn miller_loop(g1_x: Fp, g1_y: Fp, g2_x: Fp2, g2_y: Fp2, g2_z: Fp2) -> Fp12 {
+    let precomputes = calc_pairing_precomp(g2_x, g2_y, g2_z);
+    // for i in 0..precomputes.len() {
+    //     println!("{:?} ----", i);
+    //     println!("precomputes calculated 1 - {:?}", precomputes[i][0].to_biguint());
+    //     println!("precomputes calculated 2 - {:?}", precomputes[i][1].to_biguint());
+    //     println!("precomputes calculated 3 - {:?}", precomputes[i][2].to_biguint());
+    // }
+    // return Fp12::one();
     let Px = g1_x.clone();
     let Py = g1_y.clone();
     let mut f12 = Fp12::one();
     let mut j = 0;
 
-    for i in (0..get_bls_12_381_parameter().bits()-2).rev() {
-
+    for i in (0..get_bls_12_381_parameter().bits()-1).rev() {
+        println!("i -- {:?}", i);
         let E = precomputes[j];
         f12 = f12.multiplyBy014(E[0], E[1]*Px, E[2]*Py);
         if get_bls_12_381_parameter().bit(i) {
@@ -834,9 +1005,10 @@ pub fn miller_loop(g1_x: Fp, g1_y: Fp, g2_x: Fp2, g2_y: Fp2) -> Fp12 {
     f12.conjugate()
 }
 
-pub fn pairing(p_x: Fp, p_y: Fp, q_x: Fp2, q_y: Fp2) -> Fp12 {
-    let looped = miller_loop(p_x, p_y, q_x, q_y);
-    looped.final_exponentiate()
+pub fn pairing(p_x: Fp, p_y: Fp, q_x: Fp2, q_y: Fp2, q_z: Fp2) -> Fp12 {
+    let looped = miller_loop(p_x, p_y, q_x, q_y, q_z);
+    looped
+    // looped.final_exponentiate()
 }
 
 pub fn mod_sub(a: u32, b: u32) -> (u32, bool) {
@@ -876,39 +1048,64 @@ pub fn big_sub(a: Vec<u32>, b: Vec<u32>) -> Vec<u32> {
 pub fn verify_bls_signatures() -> bool {
     // Public key
     // Splits into little endian
-    let pk_x = BigUint::from_str("3071902358779104425805220059913391042958977442368743450008922736970201383908820407429457646333339330346464018568299").unwrap().to_u32_digits();
-    let pk_y = BigUint::from_str("208729469830998646909339719617829960147637284847029296662162145937938053125975650713155855600870449370845588704920").unwrap().to_u32_digits();
-
+    let pk_x = BigUint::from_str("1216495682195235861952885506871698490232894470117269383940381148575524314493849307811227440691167647909822763414941").unwrap().to_u32_digits();
+    let pk_y = BigUint::from_str("2153848155426317245700560287567131132765685008362732985860101000686875894603366983854567186180519945327668975076337").unwrap().to_u32_digits();
+    let pk_z = BigUint::from_str("1").unwrap().to_u32_digits();
     // Hashed message in g2
-    let Hm_x_1 = BigUint::from_str("377525340465127240390006870673927129435673249221760063250140335517131386743242190939209933287674151299948365589984").unwrap().to_u32_digits();
-    let Hm_x_2 = BigUint::from_str("1050959494132411586723873443636085717179713480840095989211192028601018716895799746178715855146873969711260353313306").unwrap().to_u32_digits();
-    let Hm_y_1 = BigUint::from_str("1131267707057668367159571747448144959495496577180002964665679138922368484682635468083328267231891238196968252631379").unwrap().to_u32_digits();
-    let Hm_y_2 = BigUint::from_str("3783154323541729598398766283148329593362868413141617593978449262336941595119881847879377563302954053187852058644118").unwrap().to_u32_digits();
+    let Hm_x_1 = BigUint::from_str("2640504383352253166624742184946918613522392710628037055952404127879364455194422343335555527925815834654853618706317").unwrap().to_u32_digits();
+    let Hm_x_2 = BigUint::from_str("3512267754584411844719003222712149130451230828216813699108449950001725181635151866954918805409098715392393669496763").unwrap().to_u32_digits();
+    let Hm_y_1 = BigUint::from_str("1819141142055458317635768413798746444112487913647217792452244858223746035103974374419118545961357374373926748974853").unwrap().to_u32_digits();
+    let Hm_y_2 = BigUint::from_str("2023172707753915325613231249141956147838197708174300845595677034762003254300804275953249871078804883738174492552197").unwrap().to_u32_digits();
+    let Hm_z_1 = BigUint::from_str("2090317837686632453881173016321367129380434356038329533464948735487686003804511165163385664859654015333500347340874").unwrap().to_u32_digits();
+    let Hm_z_2 = BigUint::from_str("3589273988676721566549754197317344469206294207551897598521700599244392528027952567094835689880190836504376087662460").unwrap().to_u32_digits();
     // Generator
     let G_x = BigUint::from_str("3685416753713387016781088315183077757961620795782546409894578378688607592378376318836054947676345821548104185464507").unwrap().to_u32_digits();
     let G_y = BigUint::from_str("1339506544944476473020471379941921221584933875938349620426543736416511423956333506472724655353366534992391756441569").unwrap().to_u32_digits();
-
+    let G_z =  BigUint::from_str("1").unwrap().to_u32_digits();
     // Signature
-    let S_x_1 = BigUint::from_str("966572263166434944599183957482752531047038993953916430862595578899059824912156165297149403978420723932172123775406").unwrap().to_u32_digits();
-    let S_x_2 = BigUint::from_str("842321951799503469014964953496381065608123412078137658319961132736911642409943969612292629578043499296195717122533").unwrap().to_u32_digits();
-    let mut S_y_1 = BigUint::from_str("1639805997476177777241606094884612303776858264957232458415894583607376414805753804084820168641517462543804792794779").unwrap().to_u32_digits();
-    let mut S_y_2 = BigUint::from_str("3855722596444217665140296300241881837775734411784092265317102637289824807772757224642216633698428180424693166393122").unwrap().to_u32_digits();
+    let S_x_1 = BigUint::from_str("2623971017592927791661443929103810896934774536775525535423614243457684905034147949323467412106133456094022067726851").unwrap().to_u32_digits();
+    let S_x_2 = BigUint::from_str("2791552278788393998835490815906332650385266234676766868498515429583366873304026057923442494886948609285829286788356").unwrap().to_u32_digits();
+    let S_y_1 = BigUint::from_str("1392880899106984160179818268515214962705329372907929072981217458923190202387659009520579695608141992620405977748755").unwrap().to_u32_digits();
+    let S_y_2 = BigUint::from_str("2607207514294746608778464853061537277878553458184247374568293197687045701239874275081091959210122811260239467513958").unwrap().to_u32_digits();
+    let S_z_1 = BigUint::from_str("1").unwrap().to_u32_digits();
+    let S_z_2 = BigUint::from_str("0").unwrap().to_u32_digits();
 
     let bls_12_381_prime = BigUint::from_str("4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787").unwrap().to_u32_digits();
 
     // 1. negate Signature
-    let S_y_1 = big_sub(bls_12_381_prime.clone(), S_y_1);
-    let S_y_2 = big_sub(bls_12_381_prime.clone(), S_y_2);
+    let pk_x_negate = pk_x.clone();
+    let pk_y_negate = (modulus()-BigUint::new(pk_y)).to_u32_digits();
+    let pk_z_negate = pk_z.clone();
 
-    // 2. Miller loop
+    let pk_x_neg_fp = Fp::get_fp_from_biguint(BigUint::new(pk_x_negate));
+    let pk_y_neg_fp = Fp::get_fp_from_biguint(BigUint::new(pk_y_negate));
 
-    
+    let hmx_fp2 = Fp2([Fp::get_fp_from_biguint(BigUint::new(Hm_x_1)), Fp::get_fp_from_biguint(BigUint::new(Hm_x_2))]);
+    let hmy_fp2 = Fp2([Fp::get_fp_from_biguint(BigUint::new(Hm_y_1)), Fp::get_fp_from_biguint(BigUint::new(Hm_y_2))]);
+    let hmz_fp2 = Fp2([Fp::get_fp_from_biguint(BigUint::new(Hm_z_1)), Fp::get_fp_from_biguint(BigUint::new(Hm_z_2))]);
 
 
+    let sx_fp2 = Fp2([Fp::get_fp_from_biguint(BigUint::new(S_x_1)), Fp::get_fp_from_biguint(BigUint::new(S_x_2))]);
+    let sy_fp2 = Fp2([Fp::get_fp_from_biguint(BigUint::new(S_y_1)), Fp::get_fp_from_biguint(BigUint::new(S_y_2))]);
+    let sz_fp2 = Fp2([Fp::get_fp_from_biguint(BigUint::new(S_z_1)), Fp::get_fp_from_biguint(BigUint::new(S_z_2))]);
 
-//    let pairingRes = pairing(P.pointNegate(), Hm)
-//    let pairingRes2 = pairing(G, S)
-    true
+    let g_x = Fp::get_fp_from_biguint(BigUint::new(G_x));
+    let g_y = Fp::get_fp_from_biguint(BigUint::new(G_y));
+    // 2. P(pk_negate, Hm)
+    let ePHm = pairing(pk_x_neg_fp, pk_y_neg_fp, hmx_fp2, hmy_fp2, hmz_fp2);
+    ePHm.print();
+    let eGS = pairing(g_x, g_y, sx_fp2, sy_fp2, sz_fp2);
+    eGS.print();
+
+    let mu = ePHm * eGS;
+    mu.print();
+
+    let mu_finaexp = mu.final_exponentiate();
+
+    mu_finaexp.print();
+
+    mu_finaexp == Fp12::one()
+    // true
 }
 
 #[cfg(test)]   
@@ -920,22 +1117,47 @@ mod tests {
 
     use crate::native::big_sub;
 
-    use super::{verify_bls_signatures, Fp};
+    use super::{verify_bls_signatures, Fp, Fp12};
 
     #[test]
     pub fn test1() {
-        // verify_bls_signatures();
+        assert!(verify_bls_signatures());
         // let x = Fp([0;12]);
         // println!("{:?}", x.get_bit(0));
+        // let x: [u32; 12]=[1046962272, 2463794046, 2040554344, 1512106597, 3133001559, 2627724492, 2495709060, 1987230313, 1633322861, 1987308329, 3160603554, 114863259];
+        // let x_bu = BigUint::new(x.to_vec());
+        // println!("{:?}",x_bu);
     }
 
     #[test]
-    pub fn test_big_sum() {
-        let pk_x = BigUint::from_str("3071902358779104425805220059913391042958977442368743450008922736970201383908820407429457646333339330346464018568299").unwrap();
-        let pk_x_u32 = pk_x.to_u32_digits();
-        let S_x_1 = BigUint::from_str("966572263166434944599183957482752531047038993953916430862595578899059824912156165297149403978420723932172123775406").unwrap();
-        let S_x_1_u32 = S_x_1.to_u32_digits();
-        let res = big_sub(pk_x_u32, S_x_1_u32);
-        assert_eq!(BigUint::new(res), pk_x-S_x_1);
+    pub fn test_final_exponentiate() {
+        let aa = ["2181142506194812233868097821779361009807326315828153071050324314717744521676711650071190927260282422014627435089208",
+            "3266212670671256779826008414922395966600400122723332695666308996296105595418386213353825620535446475769829785237189",
+            "3280330655787598118299804758957910379684134784964426565939861302675766948066521588562898980898245868682162153155911",
+            "333668007718210311816046938245689395232794221928183840372182128979685996722059498232053963662509478803385469716056",
+            "1650925102445293819378017648160637800280351377141029658990698964033732511884552459036333864590686008335846481856882",
+            "3925133212240632255860280854235945320282874550806663137653784505923891479863770370026712801361887427462376126696706",
+            "2444089052091192833501409081021321360112867893942837175254954622703299880931587618210267154453853513743076365662283",
+            "3142914221549818039420055870398197863502329018278548609868118001898418737390067291084903575823960349378631910285921",
+            "1952057563719092278028425573632201081234877258097927010867141683896274170520489868686437644804596724295624637397077",
+            "254131389529427774765960554324483250584297364987873642087841623909520980093766889928789173976296059957431962608694",
+            "1385128161651935856764061834929068245137081648283968377947672499160305921464670953157912428887005620142387465559867",
+            "101302147352745188522496764263445345397483945567997375025250825330209385517139484882425580831299520200841767383756"];
+
+
+        let aa_fp12 = Fp12::from_str(aa);
+        let mu_finaexp = aa_fp12.final_exponentiate();
+        mu_finaexp.print();
+        assert_eq!(mu_finaexp, Fp12::one())
     }
+
+    // #[test]
+    // pub fn test_big_sum() {
+    //     let pk_x = BigUint::from_str("3071902358779104425805220059913391042958977442368743450008922736970201383908820407429457646333339330346464018568299").unwrap();
+    //     let pk_x_u32 = pk_x.to_u32_digits();
+    //     let S_x_1 = BigUint::from_str("966572263166434944599183957482752531047038993953916430862595578899059824912156165297149403978420723932172123775406").unwrap();
+    //     let S_x_1_u32 = S_x_1.to_u32_digits();
+    //     let res = big_sub(pk_x_u32, S_x_1_u32);
+    //     assert_eq!(BigUint::new(res), pk_x-S_x_1);
+    // }
 }
