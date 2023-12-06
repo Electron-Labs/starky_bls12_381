@@ -151,6 +151,15 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "itertools"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
@@ -297,7 +306,7 @@ dependencies = [
  "anyhow",
  "getrandom",
  "hashbrown",
- "itertools",
+ "itertools 0.11.0",
  "keccak-hash",
  "log",
  "num",
@@ -318,7 +327,7 @@ version = "0.1.1"
 source = "git+https://github.com/Electron-Labs/plonky2.git#f1be8409143ce5edaaefcaed9f6fe9365f7db992"
 dependencies = [
  "anyhow",
- "itertools",
+ "itertools 0.11.0",
  "num",
  "plonky2_util",
  "rand",
@@ -473,7 +482,7 @@ version = "0.1.2"
 source = "git+https://github.com/Electron-Labs/plonky2.git#f1be8409143ce5edaaefcaed9f6fe9365f7db992"
 dependencies = [
  "anyhow",
- "itertools",
+ "itertools 0.11.0",
  "log",
  "plonky2",
  "plonky2_maybe_rayon",
@@ -485,6 +494,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "hex",
+ "itertools 0.10.5",
  "num-bigint",
  "plonky2",
  "starky",
