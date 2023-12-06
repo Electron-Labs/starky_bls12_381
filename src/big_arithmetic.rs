@@ -24,6 +24,7 @@ pub fn big_add(a: &[u32], b: &[u32]) -> Vec<u32> {
 }
 
 pub fn big_sub(a: &[u32], b: &[u32]) -> (Vec<u32>, u32) {
+    // assume a>b
     assert_eq!(a.len(), b.len());
     let mut c: Vec<u32> = Vec::with_capacity(a.len());
     let mut carry: u32 = 0;
@@ -38,6 +39,28 @@ pub fn big_sub(a: &[u32], b: &[u32]) -> (Vec<u32>, u32) {
         }
     }
     (c, carry)
+}
+
+// a * b
+pub fn big_multiply(a: &[u32], b: &[u32]) -> Vec<u32> {
+    assert_eq!(a.len(), b.len());
+    let mut c: Vec<u32> = Vec::with_capacity(a.len()+1);
+    let mut carry = 0;
+    for (a_i, b_i) in a.iter().zip(b.iter()) {
+        let c_i = (*a_i as u64) * (*b_i as u64) + (carry as u64);
+        c.push(c_i as u32);
+        carry = (c_i >> 32) as u32;
+    }
+    c.push(carry as u32);
+    c
+}
+
+// a % b
+pub fn big_mod(a: &[u32], b: &[u32]) -> Vec<u32> {
+    // 1. We calculate div out of field
+    // 2. we calculate rem out of field
+    // 3. a = b * div + rem
+    todo!()
 }
 
 #[cfg(test)]
