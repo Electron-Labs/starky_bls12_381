@@ -3,8 +3,7 @@ use std::marker::PhantomData;
 use plonky2::{hash::hash_types::RichField, field::{extension::{Extendable, FieldExtension}, packed::PackedField}, iop::ext_target::ExtensionTarget};
 use starky::{stark::Stark, constraint_consumer::ConstraintConsumer, evaluation_frame::{StarkFrame, StarkEvaluationFrame}};
 
-use crate::{layout::{TOTAL_COLUMNS, G1_X_IDX, G1_Y_IDX, G2_X_1_IDX, G2_X_2_IDX, G2_Y_1_IDX, G2_Y_2_IDX, G2_Z_1_IDX, G2_Z_2_IDX}, trace::PairingStark};
-
+use crate::{layout::{TOTAL_COLUMNS, G1_X_IDX, G1_Y_IDX, G2_X_1_IDX, G2_X_2_IDX, G2_Y_1_IDX, G2_Y_2_IDX, G2_Z_1_IDX, G2_Z_2_IDX, G1_Y_CARRY_IDX}, trace::PairingStark, native::modulus_digits};
 // #[derive(Copy, Clone)]
 // pub struct PairingStark<F: RichField + Extendable<D>, const D: usize> {
 //     _phantom: PhantomData<F>,
@@ -32,19 +31,37 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F,D> for PairingStark<F
             let local_values = vars.get_local_values();
             let next_values = vars.get_next_values();
             let public_inputs = vars.get_public_inputs();
-            println!("local_values {:?}", local_values.len());
-            // println!("public_inputs {:?}", public_inputs);
-            yield_constr.constraint(P::ONES-P::ZEROS);
-            // for i in 0..12 {
-            //     yield_constr.constraint_first_row(local_values[G1_X_IDX + i]-public_inputs[G1_X_IDX+i]);
-            //     yield_constr.constraint_first_row(local_values[G1_Y_IDX + i]-public_inputs[G1_Y_IDX+i]);
-            //     yield_constr.constraint_first_row(local_values[G2_X_1_IDX + i]-public_inputs[G2_X_1_IDX+i]);
-            //     yield_constr.constraint_first_row(local_values[G2_X_2_IDX + i]-public_inputs[G2_X_2_IDX+i]);
-            //     yield_constr.constraint_first_row(local_values[G2_Y_1_IDX + i]-public_inputs[G2_Y_1_IDX+i]);
-            //     yield_constr.constraint_first_row(local_values[G2_Y_2_IDX + i]-public_inputs[G2_Y_2_IDX+i]);
-            //     yield_constr.constraint_first_row(local_values[G2_Z_1_IDX + i]-public_inputs[G2_Z_2_IDX+i]);
-            //     yield_constr.constraint_first_row(local_values[G2_Z_2_IDX + i]-public_inputs[G2_Z_1_IDX+i]);
-            // }
+
+            for i in 0..12 {
+                yield_constr.constraint_first_row(local_values[G1_X_IDX + i]-public_inputs[G1_X_IDX+i]);
+                yield_constr.constraint_first_row(local_values[G1_Y_IDX + i]-public_inputs[G1_Y_IDX+i]);
+                yield_constr.constraint_first_row(local_values[G2_X_1_IDX + i]-public_inputs[G2_X_1_IDX+i]);
+                yield_constr.constraint_first_row(local_values[G2_X_2_IDX + i]-public_inputs[G2_X_2_IDX+i]);
+                yield_constr.constraint_first_row(local_values[G2_Y_1_IDX + i]-public_inputs[G2_Y_1_IDX+i]);
+                yield_constr.constraint_first_row(local_values[G2_Y_2_IDX + i]-public_inputs[G2_Y_2_IDX+i]);
+                yield_constr.constraint_first_row(local_values[G2_Z_1_IDX + i]-public_inputs[G2_Z_1_IDX+i]);
+                yield_constr.constraint_first_row(local_values[G2_Z_2_IDX + i]-public_inputs[G2_Z_2_IDX+i]);
+            }
+
+            let modulus_digits = modulus_digits();
+
+            //  G1_Y_INDEX(row: 0) + G1_Y_INDEX(row: 1) == MODULUS
+            for i in 0..12 {
+                if i == 0 {
+                    yield_constr.constraint_first_row(
+                        local_values[G1_Y_IDX+i] + 
+                        next_values[G1_Y_IDX+i] - 
+                        (next_values[G1_Y_CARRY_IDX+i] * FE::from_canonical_u64(1u64<<32)) - 
+                        FE::from_canonical_u32(modulus_digits[i]));
+                } else {
+                    yield_constr.constraint_first_row(
+                        local_values[G1_Y_IDX+i] + 
+                        next_values[G1_Y_CARRY_IDX + i - 1] +
+                        next_values[G1_Y_IDX+i] - 
+                        (next_values[G1_Y_CARRY_IDX+i] * FE::from_canonical_u64(1u64<<32)) - 
+                        FE::from_canonical_u32(modulus_digits[i]));
+                }
+            }
         }
 
         type EvaluationFrameTarget = StarkFrame<ExtensionTarget<D>, ExtensionTarget<D>, COLUMNS, PUBLIC_INPUTS>;
@@ -66,12 +83,14 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F,D> for PairingStark<F
 #[cfg(test)]
 mod tests {
     use plonky2::{plonk::config::{PoseidonGoldilocksConfig, GenericConfig}, util::{timing::TimingTree, log2_strict}};
-    use starky::{config::StarkConfig, prover::prove, verifier::verify_stark_proof};
+    use starky::{config::StarkConfig, prover::prove, verifier::verify_stark_proof, stark::Stark};
     use plonky2::field::types::Field;
-    use crate::{constrain::PairingStark, layout::TOTAL_COLUMNS, trace::trace_rows_to_poly_values};
+    use crate::{constrain::PairingStark, layout::TOTAL_COLUMNS, native::modulus_digits};
+    use starky::util::trace_rows_to_poly_values;
 
     #[test]
     fn test_constraints() {
+        println!("{:?}", modulus_digits());
         const D: usize = 2;
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
@@ -128,22 +147,14 @@ mod tests {
             }
         }
         let trace_poly_values = trace_rows_to_poly_values(trace.clone());
-        let degree = trace_poly_values[0].len();
-        let degree_bits = log2_strict(degree);
-        // let fri_params = config.fri_params(degree_bits);
-        let rate_bits = config.fri_config.rate_bits;
-        let cap_height = config.fri_config.cap_height;
-        // println!("degree {:?}", degree);
-        // println!("degree_bits {:?}", degree_bits);
-        // println!("rate_bits {:?}", rate_bits);
-        // println!("cap_height {:?}", cap_height);
+        // stark.quotient_degree_factor()
         let proof= prove::<F, C, S, D>(
             stark,
             &config,
-            trace_rows_to_poly_values(trace),
+            trace_poly_values,
             &pis,
             &mut TimingTree::default(),
         ); 
-        verify_stark_proof(s_, proof.unwrap(), &config);
+        verify_stark_proof(s_, proof.unwrap(), &config).unwrap();
     }
 }

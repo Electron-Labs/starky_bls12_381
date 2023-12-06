@@ -1,6 +1,7 @@
+use num_bigint::BigUint;
 use plonky2::{field::{types::Field, extension::Extendable, polynomial::PolynomialValues}, hash::hash_types::RichField, util::transpose};
 use itertools::Itertools;
-use crate::{layout::{G1_X_IDX, G1_Y_IDX, G2_X_1_IDX, G2_X_2_IDX, G2_Y_1_IDX, G2_Y_2_IDX, G2_Z_1_IDX, G2_Z_2_IDX, G1_Y_NEGATE_SELECTOR_IDX, Z_INVERT_IDX_1, Z_INVERT_IDX_2, G1_Y_CARRY_IDX, TOTAL_COLUMNS}, native::{modulus, get_negate, get_g2_invert, get_u32_carries}};
+use crate::{layout::{G1_X_IDX, G1_Y_IDX, G2_X_1_IDX, G2_X_2_IDX, G2_Y_1_IDX, G2_Y_2_IDX, G2_Z_1_IDX, G2_Z_2_IDX, G1_Y_NEGATE_SELECTOR_IDX, Z_INVERT_IDX_1, Z_INVERT_IDX_2, G1_Y_CARRY_IDX, TOTAL_COLUMNS}, native::{modulus, get_negate, get_g2_invert, get_u32_carries, modulus_digits, Fp}};
 
 #[derive(Clone)]
 pub struct PairingStark<F: RichField + Extendable<D>, const D: usize> {
@@ -10,6 +11,10 @@ pub struct PairingStark<F: RichField + Extendable<D>, const D: usize> {
 
 
 impl<F: RichField + Extendable<D>, const D: usize> PairingStark<F, D> {
+
+    const PI_INDEX_X0: usize = 0;
+    const PI_INDEX_X1: usize = 0;
+
     pub fn new(num_rows: usize) -> Self {
         Self {
              trace: vec![[F::ZERO; TOTAL_COLUMNS]; num_rows],
@@ -58,13 +63,24 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingStark<F, D> {
 
         let negate_g1_y = get_negate(&g1[1]);
         // Set negate for row 1
+        let carries = get_u32_carries(&g1[1], &negate_g1_y);
         self.assign_u32_12(1, G1_Y_IDX, negate_g1_y);
-        self.assign_u32_12(1, G1_Y_CARRY_IDX, get_u32_carries(&g1[1], &negate_g1_y));
+        self.assign_u32_12(1, G1_Y_CARRY_IDX, carries);
 
         for i in 1..self.num_rows {
             // self.assign_cols_from_prev(i, G1_Y_IDX, 12);
         }
 
+        let g1_y_bu = BigUint::new(g1[1].to_vec());
+        let g1_neg_y_bu = BigUint::new(negate_g1_y.to_vec());
+        println!("g1_y::{}, g1_neg_y::{}, modulus::{}", g1_y_bu, g1_neg_y_bu, modulus());
+        for i in 1..11 {
+            println!("dnkjn{:?}",self.trace[0][G1_Y_IDX+i]  
+            + self.trace[1][G1_Y_CARRY_IDX + i-1]+
+            self.trace[1][G1_Y_IDX + i]- 
+            (self.trace[1][G1_Y_CARRY_IDX + i] * F::from_canonical_u64(1u64<<32)) - 
+            F::from_canonical_u32(modulus_digits()[i]));
+        }
         self.trace.clone()
     }
 }
@@ -84,7 +100,7 @@ pub fn trace_rows_to_poly_values<F: Field>(
 // Constraints
 /*
     1. Z_INDEX(row: 0) * Z_INVERT_INDEX(row: 0) == 1
-    2. G1_Y_INDEX(row: 0) + G1_Y_INDEX(row: 1) == MODULUS
+    2. G1_Y_INDEX(row: 0) + G1_Y_INDEX(row: 1) == MODULUS [X]
     3. Z_INDEX -> remains same throughout rows(0-num_rows)
     4. Z_INVERT_INDEX -> remains same throughout (0-num_rows)
     5. G1_Y_INDEX -> remain same throughout (1-num_rows)

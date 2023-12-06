@@ -37,11 +37,17 @@ pub fn get_g2_invert(z1: &[u32; 12], z2: &[u32; 12]) -> [[u32; 12]; 2] {
 
 pub fn get_u32_carries(x: &[u32; 12], y: &[u32; 12]) -> [u32; 12] {
     let mut carries = [0u32; 12];
+    let mut prev_carry = 0;
     for i in 0..12 {
-        let z = (x[i] as u64 + y[i] as u64);
+        if i!=0{
+            prev_carry = carries[i-1];
+        }
+        let z = (x[i] as u64 + y[i] as u64 + prev_carry as u64);
+        println!("i-{:?}--x:: {:?}, y:: {:?}, z:: {:?}, carry:: {:?}",i,x[i], y[i], prev_carry,(z>>32) as u32);
         if i!=11
-         {carries[i+1] = (z>>32) as u32 }
+         {carries[i] = (z>>32) as u32 }
     }
+    carries[11] = 0;
     carries
 }
 
