@@ -51,6 +51,23 @@ pub fn get_u32_carries(x: &[u32; 12], y: &[u32; 12]) -> [u32; 12] {
     carries
 }
 
+
+pub fn multiply_by_slice(x: &[u32; 12], y: u32) -> ([u32; 13],[u32; 12]) {
+    let mut res: [u32; 13] = [0u32; 13];
+    let mut carries: [u32; 12] = [0u32; 12];
+    let mut prev_carry = 0;
+    for i in 0..12 {
+        let temp = (x[i] as u64 * y as u64) + prev_carry as u64;
+        let temp_res = temp as u32;
+        let new_carry = (temp>>32) as u32;
+        prev_carry = new_carry;
+        res[i] = temp_res;
+        carries[i] = prev_carry;
+    }
+    res[12] = prev_carry;
+    (res, carries)
+}
+
 pub fn egcd(a: BigUint, b: BigUint) -> BigUint {
     // if a == BigUint::from(0 as u32){
     //     (b, BigUint::from(0 as u32), BigUint::from(1 as u32))
@@ -101,6 +118,25 @@ pub fn fp4_square(a: Fp2, b: Fp2) -> (Fp2, Fp2) {
 pub fn get_u32_vec_from_literal(x: BigUint) -> [u32; 12] {
     let mut x_u32_vec: Vec<u32> = x.to_u32_digits();
     while x_u32_vec.len() != 12 {
+        x_u32_vec.push(0 as u32);
+    }
+    x_u32_vec.try_into().unwrap()
+}
+
+pub fn get_selector_bits_from_u32(x: u32) -> [u32; 12] {
+    // assert!(x<=4096);
+    let mut res = [0u32; 12];
+    let mut val = x.clone();
+    for i in 0..12 {
+        res[i] = (val&1);
+        val = val >> 1;
+    }
+    res
+}
+
+pub fn get_u32_vec_from_literal_24(x: BigUint) -> [u32; 24] {
+    let mut x_u32_vec: Vec<u32> = x.to_u32_digits();
+    while x_u32_vec.len() != 24 {
         x_u32_vec.push(0 as u32);
     }
     x_u32_vec.try_into().unwrap()
@@ -214,6 +250,16 @@ pub fn add_fp(x: Fp, y: Fp) -> Fp {
     // todo!()
 }
 
+pub fn add_fp_without_reduction(x: Fp, y: Fp) -> [u32; 12] {
+    // let x_b = BigUint::new(x.0.try_into().unwrap());
+    // let y_b = BigUint::new(y.0.try_into().unwrap());
+    // let z = (x_b + y_b).modpow(&BigUint::from_str("1").unwrap(), &modulus());
+    // Fp(get_u32_vec_from_literal(z))
+    let x_plus_y = big_add(&x.0, &y.0);
+    get_u32_vec_from_literal(BigUint::new(x_plus_y))
+    // todo!()
+}
+
 pub fn mul_fp(x: Fp, y: Fp) -> Fp {
     //println!("sub_fp x{:?}, y{:?}", x, y);
     let x_b = BigUint::new(x.0.try_into().unwrap());
@@ -221,6 +267,13 @@ pub fn mul_fp(x: Fp, y: Fp) -> Fp {
     let z = (x_b * y_b).modpow(&BigUint::from_str("1").unwrap(), &modulus());
     //println!("z {:?} {:?}", z.to_u32_digits(), z.to_u32_digits().len());
     Fp(get_u32_vec_from_literal(z))
+}
+
+pub fn mul_fp_without_reduction(x: Fp, y: Fp) -> [u32; 24] {
+    let x_b = BigUint::new(x.0.try_into().unwrap());
+    let y_b = BigUint::new(y.0.try_into().unwrap());
+    let z = x_b * y_b;
+    get_u32_vec_from_literal_24(z)
 }
 
 pub fn negate_fp(x: Fp) -> Fp {
@@ -359,6 +412,10 @@ pub fn mul_Fp2(x: Fp2, y: Fp2) -> Fp2 {
         [c0, c1]
     )
 }
+
+// pub fn mul_fp2_without_reduction(x: Fp2, y: Fp2) -> Fp2 {
+
+// }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Fp6([Fp;6]);

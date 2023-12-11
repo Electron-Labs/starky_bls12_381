@@ -1,7 +1,9 @@
+use std::str::FromStr;
+
 use num_bigint::BigUint;
 use plonky2::{field::{types::Field, extension::Extendable, polynomial::PolynomialValues}, hash::hash_types::RichField, util::transpose};
 use itertools::Itertools;
-use crate::{layout::{G1_X_IDX, G1_Y_IDX, G2_X_1_IDX, G2_X_2_IDX, G2_Y_1_IDX, G2_Y_2_IDX, G2_Z_1_IDX, G2_Z_2_IDX, G1_Y_NEGATE_SELECTOR_IDX, Z_INVERT_IDX_1, Z_INVERT_IDX_2, G1_Y_CARRY_IDX, TOTAL_COLUMNS}, native::{modulus, get_negate, get_g2_invert, get_u32_carries, modulus_digits, Fp}};
+use crate::{layout::{G1_X_IDX, G1_Y_IDX, G2_X_1_IDX, G2_X_2_IDX, G2_Y_1_IDX, G2_Y_2_IDX, G2_Z_1_IDX, G2_Z_2_IDX, TOTAL_COLUMNS, X_INPUT_IDX, Y_INPUT_IDX, EVALUATION_IDX, XY_IDX, XY_CARRIES_IDX, SELECTOR}, native::{modulus, get_negate, get_g2_invert, get_u32_carries, modulus_digits, Fp, mul_fp_without_reduction, get_u32_vec_from_literal_24, multiply_by_slice, get_u32_vec_from_literal, get_selector_bits_from_u32}};
 
 #[derive(Clone)]
 pub struct PairingStark<F: RichField + Extendable<D>, const D: usize> {
@@ -28,11 +30,41 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingStark<F, D> {
         }
     }
 
+    pub fn assign_u32_in_series(&mut self, row: usize, start_col: usize, val: &[u32]) {
+        for i in 0..val.len() {
+            self.trace[row][start_col + i] = F::from_canonical_u32(val[i]);
+        }
+    }
+
     pub fn assign_cols_from_prev(&mut self, row: usize, start_col: usize, num_cols: usize) {
         assert!(row>=1);
         for i in start_col..start_col+num_cols {
             self.trace[row][start_col+i] = self.trace[row-1][start_col+i];
         }
+    }
+
+    pub fn generate_trace_1(&mut self, x: [u32; 12], y: [u32; 12]) -> Vec<[F; TOTAL_COLUMNS]>{
+        let z = get_u32_vec_from_literal_24(BigUint::new(x.to_vec())*BigUint::new(y.to_vec()));
+        let mut selector: u32 = 1;
+        for row in 0..self.num_rows {
+            for i in 0..12 {
+                self.trace[row][X_INPUT_IDX+i] = F::from_canonical_u32(x[i]);
+                self.trace[row][Y_INPUT_IDX+i] = F::from_canonical_u32(y[i]);
+            }
+            for i in 0..24 {
+                self.trace[row][EVALUATION_IDX+i] = F::from_canonical_u32(z[i]);
+            }
+            let selector_u32 = get_selector_bits_from_u32(selector.clone());
+            self.assign_u32_12(row, SELECTOR, selector_u32);
+            selector *= 2;
+        }
+        // run a loop for all elements in y
+        for i in 0..12 {
+            let (xy, xy_carry) = multiply_by_slice(&x, y[i]);
+            self.assign_u32_in_series(i, XY_IDX, &xy);
+            self.assign_u32_in_series(i, XY_CARRIES_IDX, &xy_carry);
+        }
+        self.trace.clone()
     }
 
     // fill
@@ -49,38 +81,38 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingStark<F, D> {
                 self.trace[0][G2_Y_2_IDX+j] = F::from_canonical_u32(g2[3][j]);
                 self.trace[0][G2_Z_1_IDX+j] = F::from_canonical_u32(g2[4][j]);
                 self.trace[0][G2_Z_2_IDX+j] = F::from_canonical_u32(g2[5][j]);
-
-                
             }
         }
-        // Set negate selector
-        self.trace[0][G1_Y_NEGATE_SELECTOR_IDX] = F::ONE;
 
-        // Set z_invert 
+        // Set z_invert in the z_index itself from row 1 -> total_rows
         let z_invert = get_g2_invert(&g2[4], &g2[5]);
-        self.assign_u32_12(0, Z_INVERT_IDX_1, z_invert[0]);
-        self.assign_u32_12(0, Z_INVERT_IDX_2, z_invert[1]);
+        self.assign_u32_12(1, G2_Z_1_IDX, z_invert[0]);
+        self.assign_u32_12(1, G2_Z_2_IDX, z_invert[1]);
 
-        let negate_g1_y = get_negate(&g1[1]);
-        // Set negate for row 1
-        let carries = get_u32_carries(&g1[1], &negate_g1_y);
-        self.assign_u32_12(1, G1_Y_IDX, negate_g1_y);
-        self.assign_u32_12(1, G1_Y_CARRY_IDX, carries);
+        // Assign C0T0
+        // self.trace[0][G2_Z_1_IDX..G2_Z_1_IDX+12] * self.trace[1][G2_Z_1_IDX..G2_Z_1_IDX+12]
+        // self.assign_u32_in_series(0, C0_T0_IDX, &mul_fp_without_reduction(Fp(g2[4]), Fp(z_invert[0])));
 
         for i in 1..self.num_rows {
             // self.assign_cols_from_prev(i, G1_Y_IDX, 12);
         }
+        /*
+        cols -> c0_t0, c0_t0_carries, c0_t1, c0_t1_carries, 
+                c0(non_reduced), c0_evaluation_carries, c0_reduced_carries
+                c1_t0, c1_t0_carries, c1_t1, c1_t1_carries,
+                c1(non_reduced), c1_evaluation_carries, c1_reduced_carries
 
-        let g1_y_bu = BigUint::new(g1[1].to_vec());
-        let g1_neg_y_bu = BigUint::new(negate_g1_y.to_vec());
-        println!("g1_y::{}, g1_neg_y::{}, modulus::{}", g1_y_bu, g1_neg_y_bu, modulus());
-        for i in 1..11 {
-            println!("dnkjn{:?}",self.trace[0][G1_Y_IDX+i]  
-            + self.trace[1][G1_Y_CARRY_IDX + i-1]+
-            self.trace[1][G1_Y_IDX + i]- 
-            (self.trace[1][G1_Y_CARRY_IDX + i] * F::from_canonical_u64(1u64<<32)) - 
-            F::from_canonical_u32(modulus_digits()[i]));
-        }
+        c0 = c0_t0 - c0_t1 ;
+
+        c0_t0 = (Z[G2_Z_1_IDX..G2_Z_1_IDX+12] * Z_INV[G2_Z_1_IDX..G2_Z_1_IDX+12]);
+        c0_t1 = (Z[G2_Z_2_IDX..G2_Z_2_IDX+12] * Z_INV[G2_Z_2_IDX..G2_Z_2_IDX+12]);
+
+        c1_t0 = (Z[G2_Z_1_IDX..G2_Z_1_IDX+12] * Z_INV[G2_Z_2_IDX..G2_Z_2_IDX+12]);
+        c1_t1 = (Z[G2_Z_2_IDX..G2_Z_2_IDX+12] * Z_INV[G2_Z_1_IDX..G2_Z_1_IDX+12]);
+        c1 = c1_t0+c1_t1
+
+         */
+
         self.trace.clone()
     }
 }

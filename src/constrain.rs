@@ -3,14 +3,14 @@ use std::marker::PhantomData;
 use plonky2::{hash::hash_types::RichField, field::{extension::{Extendable, FieldExtension}, packed::PackedField}, iop::ext_target::ExtensionTarget};
 use starky::{stark::Stark, constraint_consumer::ConstraintConsumer, evaluation_frame::{StarkFrame, StarkEvaluationFrame}};
 
-use crate::{layout::{TOTAL_COLUMNS, G1_X_IDX, G1_Y_IDX, G2_X_1_IDX, G2_X_2_IDX, G2_Y_1_IDX, G2_Y_2_IDX, G2_Z_1_IDX, G2_Z_2_IDX, G1_Y_CARRY_IDX}, trace::PairingStark, native::modulus_digits};
+use crate::{layout::{TOTAL_COLUMNS, G1_X_IDX, G1_Y_IDX, G2_X_1_IDX, G2_X_2_IDX, G2_Y_1_IDX, G2_Y_2_IDX, G2_Z_1_IDX, G2_Z_2_IDX, X_INPUT_IDX, Y_INPUT_IDX, EVALUATION_IDX, XY_IDX, XY_CARRIES_IDX, SELECTOR}, trace::PairingStark, native::modulus_digits};
 // #[derive(Copy, Clone)]
 // pub struct PairingStark<F: RichField + Extendable<D>, const D: usize> {
 //     _phantom: PhantomData<F>,
 // }
 
 pub const COLUMNS: usize = TOTAL_COLUMNS;
-pub const PUBLIC_INPUTS: usize = 240;
+pub const PUBLIC_INPUTS: usize = 48;
 
 impl<F: RichField + Extendable<D>, const D: usize> Stark<F,D> for PairingStark<F, D> {
 
@@ -33,35 +33,44 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F,D> for PairingStark<F
             let public_inputs = vars.get_public_inputs();
 
             for i in 0..12 {
-                yield_constr.constraint_first_row(local_values[G1_X_IDX + i]-public_inputs[G1_X_IDX+i]);
-                yield_constr.constraint_first_row(local_values[G1_Y_IDX + i]-public_inputs[G1_Y_IDX+i]);
-                yield_constr.constraint_first_row(local_values[G2_X_1_IDX + i]-public_inputs[G2_X_1_IDX+i]);
-                yield_constr.constraint_first_row(local_values[G2_X_2_IDX + i]-public_inputs[G2_X_2_IDX+i]);
-                yield_constr.constraint_first_row(local_values[G2_Y_1_IDX + i]-public_inputs[G2_Y_1_IDX+i]);
-                yield_constr.constraint_first_row(local_values[G2_Y_2_IDX + i]-public_inputs[G2_Y_2_IDX+i]);
-                yield_constr.constraint_first_row(local_values[G2_Z_1_IDX + i]-public_inputs[G2_Z_1_IDX+i]);
-                yield_constr.constraint_first_row(local_values[G2_Z_2_IDX + i]-public_inputs[G2_Z_2_IDX+i]);
+                yield_constr.constraint_first_row(local_values[X_INPUT_IDX+i] - public_inputs[i]);
+                yield_constr.constraint_first_row(local_values[Y_INPUT_IDX+i] - public_inputs[i+12]);
+            }
+            for i in 0..12 {
+                yield_constr.constraint_transition(local_values[X_INPUT_IDX+i] - next_values[X_INPUT_IDX+i]);
+                yield_constr.constraint_transition(local_values[Y_INPUT_IDX+i] - next_values[Y_INPUT_IDX+i]);
+            }
+            for i in 0..24 {
+                yield_constr.constraint_first_row(local_values[EVALUATION_IDX+i] - public_inputs[i+24]);
+                yield_constr.constraint_transition(local_values[EVALUATION_IDX+i] - next_values[EVALUATION_IDX+i]);
             }
 
-            let modulus_digits = modulus_digits();
-
-            //  G1_Y_INDEX(row: 0) + G1_Y_INDEX(row: 1) == MODULUS
+            // Check if the multiplication happens correct
             for i in 0..12 {
-                if i == 0 {
-                    yield_constr.constraint_first_row(
-                        local_values[G1_Y_IDX+i] + 
-                        next_values[G1_Y_IDX+i] - 
-                        (next_values[G1_Y_CARRY_IDX+i] * FE::from_canonical_u64(1u64<<32)) - 
-                        FE::from_canonical_u32(modulus_digits[i]));
-                } else {
-                    yield_constr.constraint_first_row(
-                        local_values[G1_Y_IDX+i] + 
-                        next_values[G1_Y_CARRY_IDX + i - 1] +
-                        next_values[G1_Y_IDX+i] - 
-                        (next_values[G1_Y_CARRY_IDX+i] * FE::from_canonical_u64(1u64<<32)) - 
-                        FE::from_canonical_u32(modulus_digits[i]));
+                for j in 0..12 {
+                    if j == 0 {
+                        yield_constr.constraint_transition(
+                            local_values[SELECTOR + i] *
+                            (
+                                local_values[j] * local_values[Y_INPUT_IDX+i]
+                                - local_values[XY_IDX + j]
+                                - (local_values[XY_CARRIES_IDX + j] * FE::from_canonical_u64(1<<32))
+                            )
+                        )
+                    } else {
+                        yield_constr.constraint_transition(
+                            local_values[SELECTOR + i] *
+                            (
+                                local_values[X_INPUT_IDX+j] * local_values[Y_INPUT_IDX+i]
+                                + local_values[XY_CARRIES_IDX + j - 1]
+                                - local_values[XY_IDX + j]
+                                - (local_values[XY_CARRIES_IDX + j] * FE::from_canonical_u64(1<<32))
+                            )
+                        )
+                    }
                 }
             }
+            yield_constr.constraint_transition(local_values[XY_IDX + 12] - local_values[XY_CARRIES_IDX + 11]);
         }
 
         type EvaluationFrameTarget = StarkFrame<ExtensionTarget<D>, ExtensionTarget<D>, COLUMNS, PUBLIC_INPUTS>;
@@ -82,10 +91,11 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F,D> for PairingStark<F
 
 #[cfg(test)]
 mod tests {
+    use num_bigint::BigUint;
     use plonky2::{plonk::config::{PoseidonGoldilocksConfig, GenericConfig}, util::{timing::TimingTree, log2_strict}};
     use starky::{config::StarkConfig, prover::prove, verifier::verify_stark_proof, stark::Stark};
     use plonky2::field::types::Field;
-    use crate::{constrain::PairingStark, layout::TOTAL_COLUMNS, native::modulus_digits};
+    use crate::{constrain::PairingStark, layout::TOTAL_COLUMNS, native::{modulus_digits, get_u32_vec_from_literal_24}};
     use starky::util::trace_rows_to_poly_values;
 
     #[test]
@@ -145,6 +155,36 @@ mod tests {
             for e in r.iter() {
                 pis.push(F::from_canonical_u32(e.clone()));
             }
+        }
+        let trace_poly_values = trace_rows_to_poly_values(trace.clone());
+        // stark.quotient_degree_factor()
+        let proof= prove::<F, C, S, D>(
+            stark,
+            &config,
+            trace_poly_values,
+            &pis,
+            &mut TimingTree::default(),
+        ); 
+        verify_stark_proof(s_, proof.unwrap(), &config).unwrap();
+    }
+
+    #[test]
+    fn test_big_mul() {
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+        type S = PairingStark<F, D>;
+
+        let mut config = StarkConfig::standard_fast_config();
+        let mut stark = S::new(16);
+        let s_ = stark.clone();
+        let x: [u32; 12] = [1550366109, 1913070572, 760847606, 999580752, 3273422733, 182645169, 1634881460, 1043400770, 1526865253, 1101868890, 3712845450, 132602617];
+        let y: [u32; 12] = [3621225457, 1284733598, 2592173602, 2778433514, 3415298024, 3512038034, 2556930252, 2289409521, 759431638, 3707643405, 216427024, 234777573];
+        let product_x_y: [u32; 24] =  get_u32_vec_from_literal_24(BigUint::new(x.to_vec())*BigUint::new(y.to_vec()));
+        let trace = stark.generate_trace_1(x, y);
+        let mut pis = Vec::new();
+        for e in x.iter().chain(y.iter()).chain(product_x_y.iter()) {
+            pis.push(F::from_canonical_u32(e.clone()));
         }
         let trace_poly_values = trace_rows_to_poly_values(trace.clone());
         // stark.quotient_degree_factor()
