@@ -160,6 +160,12 @@ pub fn get_u32_vec_from_literal_24(x: BigUint) -> [u32; 24] {
     x_u32_vec.try_into().unwrap()
 }
 
+pub fn get_div_rem_modulus_from_biguint_12(x: BigUint) -> ([u32; 12], [u32; 12]) {
+    let rem = x.clone()%modulus();
+    let div = x/modulus();
+    (get_u32_vec_from_literal(div), get_u32_vec_from_literal(rem))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Fp(pub(crate) [u32; 12]);
 
