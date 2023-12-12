@@ -21,8 +21,9 @@ pub const XY_CARRIES_IDX: usize = XY_IDX + 13;
 pub const SHIFTED_XY: usize = XY_CARRIES_IDX + 12;
 pub const SELECTOR: usize = SHIFTED_XY + 24;
 pub const SUM: usize = SELECTOR + 12;
-pub const SUM_CARRIES: usize = SUM + 24;
-pub const EVALUATION_IDX: usize = SUM_CARRIES + 24;
+pub const SUM_CARRIES: usize = SUM + 25;
+pub const CONSTRAIN_ROW_IDX: usize = SUM_CARRIES + 24;
+pub const EVALUATION_IDX: usize = CONSTRAIN_ROW_IDX + 1;
+pub const LAST_ROW_IDX: usize = EVALUATION_IDX + 24;
 
-
-pub const TOTAL_COLUMNS: usize =  EVALUATION_IDX + 24 + 1;
+pub const TOTAL_COLUMNS: usize =  LAST_ROW_IDX + 1;

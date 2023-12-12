@@ -3,7 +3,7 @@ use std::str::FromStr;
 use num_bigint::BigUint;
 use plonky2::{field::{types::Field, extension::Extendable, polynomial::PolynomialValues}, hash::hash_types::RichField, util::transpose};
 use itertools::Itertools;
-use crate::{layout::{G1_X_IDX, G1_Y_IDX, G2_X_1_IDX, G2_X_2_IDX, G2_Y_1_IDX, G2_Y_2_IDX, G2_Z_1_IDX, G2_Z_2_IDX, TOTAL_COLUMNS, X_INPUT_IDX, Y_INPUT_IDX, EVALUATION_IDX, XY_IDX, XY_CARRIES_IDX, SELECTOR}, native::{modulus, get_negate, get_g2_invert, get_u32_carries, modulus_digits, Fp, mul_fp_without_reduction, get_u32_vec_from_literal_24, multiply_by_slice, get_u32_vec_from_literal, get_selector_bits_from_u32}};
+use crate::{layout::{G1_X_IDX, G1_Y_IDX, G2_X_1_IDX, G2_X_2_IDX, G2_Y_1_IDX, G2_Y_2_IDX, G2_Z_1_IDX, G2_Z_2_IDX, TOTAL_COLUMNS, X_INPUT_IDX, Y_INPUT_IDX, EVALUATION_IDX, XY_IDX, XY_CARRIES_IDX, SELECTOR, SHIFTED_XY, SUM, SUM_CARRIES, CONSTRAIN_ROW_IDX, LAST_ROW_IDX}, native::{modulus, get_negate, get_g2_invert, get_u32_carries, modulus_digits, Fp, mul_fp_without_reduction, get_u32_vec_from_literal_24, multiply_by_slice, get_u32_vec_from_literal, get_selector_bits_from_u32, add_u32_slices}};
 
 #[derive(Clone)]
 pub struct PairingStark<F: RichField + Extendable<D>, const D: usize> {
@@ -58,12 +58,43 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingStark<F, D> {
             self.assign_u32_12(row, SELECTOR, selector_u32);
             selector *= 2;
         }
-        // run a loop for all elements in y
+        // run a loop for all elements in y, each x*y[i] progress marks as one row
+        let mut prev_xy_sum = [0u32; 25];
         for i in 0..12 {
+            // println!("what went in  {:?}", self.trace[i][CONSTRAIN_ROW_IDX]);
             let (xy, xy_carry) = multiply_by_slice(&x, y[i]);
             self.assign_u32_in_series(i, XY_IDX, &xy);
             self.assign_u32_in_series(i, XY_CARRIES_IDX, &xy_carry);
+
+            // fill shifted XY's
+            // XY's will have 0-11 number of shifts in their respective rows
+            let mut xy_shifted = [0u32; 24];
+            for j in 0..13 {
+                let shift = i;
+                xy_shifted[j+shift] = xy[j];
+            }
+            self.assign_u32_in_series(i, SHIFTED_XY, &xy_shifted);
+
+            // Fill XY_SUM, XY_SUM_CARRIES
+            let (xy_sum, xy_sum_carry) = add_u32_slices(&xy_shifted, &prev_xy_sum);
+            self.assign_u32_in_series(i, SUM, &xy_sum);
+            self.assign_u32_in_series(i, SUM_CARRIES, &xy_sum_carry);
+            // lets see sum progresses in a constrained way
+            // println!("{:?}", xy_sum[0] as u64 +( xy_sum_carry[0] as u64 * (1u64<<32) as u64) - xy_shifted[0] as u64 - prev_xy_sum[0] as u64 );
+            // for x in 1..24 {
+            //     println!("{:?}",xy_sum[x] as u64 + (xy_sum_carry[x] as u64 * (1u64<<32) as u64) - xy_sum_carry[x-1] as u64 - xy_shifted[x] as u64 - prev_xy_sum[x] as u64 );
+            // }
+            // println!("{:?}", xy_sum[24] as u64 - xy_sum_carry[23] as u64);
+            prev_xy_sum = xy_sum.clone();
         }
+        for i in 0..11 {
+            self.trace[i][CONSTRAIN_ROW_IDX] = F::from_canonical_u32(1u32);
+        }
+        self.trace[11][LAST_ROW_IDX] = F::ONE;
+        // for i in  0..self.num_rows-1 {
+        //     // println!("{:?}", xy_sum[0] as u64 +( xy_sum_carry[0] as u64 * (1u64<<32) as u64) - xy_shifted[0] as u64 - prev_xy_sum[0] as u64 );
+        //     println!("checks:: {:?}", self.trace[i][CONSTRAIN_ROW_IDX] * ( self.trace[i+1][SUM] +( self.trace[i+1][SUM_CARRIES] * F::from_canonical_u64(1<<32)) - self.trace[i+1][SHIFTED_XY]  - self.trace[i][SUM]));
+        // }
         self.trace.clone()
     }
 

@@ -68,6 +68,24 @@ pub fn multiply_by_slice(x: &[u32; 12], y: u32) -> ([u32; 13],[u32; 12]) {
     (res, carries)
 }
 
+pub fn add_u32_slices(x: &[u32; 24], y: &[u32; 25]) -> ([u32; 25], [u32; 24]) {
+    let mut x_padded = [0u32; 25];
+    x_padded[0..24].copy_from_slice(x);
+    let mut prev_carry = 0u32;
+    let mut res = [0u32; 25];
+    let mut carries = [0u32; 24];
+    for i in 0..24 {
+        let s = x[i] as u64 + y[i] as u64 + prev_carry as u64;
+        let sum = s as u32;
+        let carry = (s >> 32) as u32;
+        prev_carry = carry;
+        res[i] = sum;
+        carries[i] = carry;
+    }
+    res[24] = prev_carry;
+    (res, carries)
+}
+
 pub fn egcd(a: BigUint, b: BigUint) -> BigUint {
     // if a == BigUint::from(0 as u32){
     //     (b, BigUint::from(0 as u32), BigUint::from(1 as u32))

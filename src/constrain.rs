@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use plonky2::{hash::hash_types::RichField, field::{extension::{Extendable, FieldExtension}, packed::PackedField}, iop::ext_target::ExtensionTarget};
 use starky::{stark::Stark, constraint_consumer::ConstraintConsumer, evaluation_frame::{StarkFrame, StarkEvaluationFrame}};
 
-use crate::{layout::{TOTAL_COLUMNS, G1_X_IDX, G1_Y_IDX, G2_X_1_IDX, G2_X_2_IDX, G2_Y_1_IDX, G2_Y_2_IDX, G2_Z_1_IDX, G2_Z_2_IDX, X_INPUT_IDX, Y_INPUT_IDX, EVALUATION_IDX, XY_IDX, XY_CARRIES_IDX, SELECTOR}, trace::PairingStark, native::modulus_digits};
+use crate::{layout::{TOTAL_COLUMNS, G1_X_IDX, G1_Y_IDX, G2_X_1_IDX, G2_X_2_IDX, G2_Y_1_IDX, G2_Y_2_IDX, G2_Z_1_IDX, G2_Z_2_IDX, X_INPUT_IDX, Y_INPUT_IDX, EVALUATION_IDX, XY_IDX, XY_CARRIES_IDX, SELECTOR, SHIFTED_XY, SUM, SUM_CARRIES, CONSTRAIN_ROW_IDX, LAST_ROW_IDX}, trace::PairingStark, native::modulus_digits};
 // #[derive(Copy, Clone)]
 // pub struct PairingStark<F: RichField + Extendable<D>, const D: usize> {
 //     _phantom: PhantomData<F>,
@@ -45,7 +45,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F,D> for PairingStark<F
                 yield_constr.constraint_transition(local_values[EVALUATION_IDX+i] - next_values[EVALUATION_IDX+i]);
             }
 
-            // Check if the multiplication happens correct
+            // Check if the multiplication happens correct at each level
             for i in 0..12 {
                 for j in 0..12 {
                     if j == 0 {
@@ -71,6 +71,58 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F,D> for PairingStark<F
                 }
             }
             yield_constr.constraint_transition(local_values[XY_IDX + 12] - local_values[XY_CARRIES_IDX + 11]);
+
+            // Constrain XY SHIFTING
+            for i in 0..12 {
+                // shift is decided by selector
+                for j in 0..13 {
+                   yield_constr.constraint_transition(
+                    local_values[SELECTOR+i] * 
+                        (
+                            local_values[SHIFTED_XY + j + i] - local_values[XY_IDX + j]
+                        )
+                    )
+                }   
+            }
+
+            // Constrain addition at each row
+            // 1. Constrain XY_SUM at row 0 is same as XY_SHIFTED
+            // 2. Constrain XY_SUM_CARRIES at row 0 are all 0
+            for j in 0..24{
+                yield_constr.constraint_first_row(local_values[SUM + j] - local_values[SHIFTED_XY + j]);
+                yield_constr.constraint_first_row(local_values[SUM_CARRIES + j] )
+            }
+            yield_constr.constraint_first_row(local_values[SUM + 24]);
+
+            // println!("what got out {:?}", local_values[CONSTRAIN_ROW_IDX]);
+
+            // 3. Constrain addition
+            yield_constr.constraint_transition(
+                local_values[CONSTRAIN_ROW_IDX] * 
+                    (next_values[SUM] + 
+                    (next_values[SUM_CARRIES] * FE::from_canonical_u64(1<<32)) -
+                    next_values[SHIFTED_XY] -
+                    local_values[SUM])
+            );
+            for j in 1..24 {
+                yield_constr.constraint_transition(
+                    local_values[CONSTRAIN_ROW_IDX] * 
+                    (next_values[SUM + j] + 
+                    (next_values[SUM_CARRIES + j] * FE::from_canonical_u64(1<<32)) -
+                    next_values[SHIFTED_XY + j] -
+                    local_values[SUM + j] -
+                    next_values[SUM_CARRIES + j - 1])
+                )
+            }
+            yield_constr.constraint_transition(local_values[CONSTRAIN_ROW_IDX] * (next_values[SUM + 24] - next_values[SUM_CARRIES + 23]));
+
+            // constrain outputs
+            for j in 0..24 {
+                yield_constr.constraint_transition(local_values[LAST_ROW_IDX] * (
+                    local_values[SUM + j] - public_inputs[24 + j]
+                ))
+            }
+
         }
 
         type EvaluationFrameTarget = StarkFrame<ExtensionTarget<D>, ExtensionTarget<D>, COLUMNS, PUBLIC_INPUTS>;
