@@ -25,11 +25,12 @@ pub const RES_MOD_CARRY_IDX: usize = RES_MOD_IDX + 13;
 pub const RES_MOD_SHIFTED_IDX: usize = RES_MOD_CARRY_IDX + 12;
 pub const RES_MOD_SUM_IDX: usize = RES_MOD_SHIFTED_IDX + 24;
 pub const RES_MOD_SUM_CARRY_IDX: usize = RES_MOD_SUM_IDX + 25;
-// pub const ADD_RESULT_SELECTOR_IDX: usize = RES_MOD_SUM_CARRY_IDX + 24;
+pub const RES_REM_SUM_IDX: usize = RES_MOD_SUM_CARRY_IDX + 24;
+pub const RES_REM_SUM_CARRY_IDX: usize = RES_REM_SUM_IDX + 25;
 
 
 
-pub const TOTAL_COLUMNS: usize =  RES_MOD_SUM_CARRY_IDX + 24;
+pub const TOTAL_COLUMNS: usize =  RES_REM_SUM_CARRY_IDX + 24;
 
 
 pub const COLUMNS: usize = TOTAL_COLUMNS;
@@ -138,7 +139,6 @@ impl<F: RichField + Extendable<D>, const D: usize> FpMultiplicationStark<F, D> {
         }
 
         for i in 0..12 {
-            // Assign divisor to all rows and check it stays same throughout
             let (res_mod, res_mod_carry) = multiply_by_slice(&div , modulus[i]);
             self.assign_u32_in_series(i, RES_MOD_IDX, &res_mod);
             self.assign_u32_in_series(i, RES_MOD_CARRY_IDX, &res_mod_carry);            
@@ -161,6 +161,16 @@ impl<F: RichField + Extendable<D>, const D: usize> FpMultiplicationStark<F, D> {
         }
 
         self.trace[11][LAST_ROW_IDX] = F::ONE;
+
+        let mut remainder = [0u32; 24];
+        remainder[0..12].copy_from_slice(&rem);
+
+        let (res_rem_sum, res_rem_sum_carry) = add_u32_slices(&remainder, &prev_res_mod_sum);
+        for i in 0..self.num_rows {
+            self.assign_u32_in_series(i, RES_REM_SUM_IDX, &res_rem_sum);
+            self.assign_u32_in_series(i, RES_REM_SUM_CARRY_IDX, &res_rem_sum_carry);
+        }
+        let local_values = self.trace[11].clone();
 
         self.trace.clone()
     }
@@ -205,6 +215,13 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F,D> for FpMultiplicati
                 yield_constr.constraint_transition(local_values[X_INPUT_IDX+i] - next_values[X_INPUT_IDX+i]);
                 yield_constr.constraint_transition(local_values[Y_INPUT_IDX+i] - next_values[Y_INPUT_IDX+i]);
                 yield_constr.constraint_transition(local_values[DIVISOR_IDX+i] - next_values[DIVISOR_IDX+i]);
+            }
+
+            for i in 0..25 {
+                yield_constr.constraint_transition(local_values[RES_REM_SUM_IDX + i] - next_values[RES_REM_SUM_IDX + i]);
+            }
+            for i in 0..24 {
+                yield_constr.constraint_transition(local_values[RES_REM_SUM_CARRY_IDX + i] - next_values[RES_REM_SUM_CARRY_IDX + i]);
             }
             // for i in 0..24 {
             //     yield_constr.constraint_first_row(local_values[EVALUATION_IDX+i] - public_inputs[i+24]);
@@ -358,6 +375,45 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F,D> for FpMultiplicati
             yield_constr.constraint_transition(local_values[CONSTRAIN_ROW_IDX] * (next_values[RES_MOD_SUM_IDX + 24] - next_values[RES_MOD_SUM_CARRY_IDX + 23]));
 
             // Constraining ab "+" y
+            for j in 0..25 {
+                if j == 0 {
+                    yield_constr.constraint_transition(
+                        local_values[LAST_ROW_IDX] * (
+                            local_values[RES_REM_SUM_IDX + j]
+                            + (local_values[RES_REM_SUM_CARRY_IDX + j] * FE::from_canonical_u64(1<<32))
+                            - local_values[RES_MOD_SUM_IDX + j]
+                            - public_inputs[24+j]
+                        )
+                    )
+                } 
+                else if j < 12{
+                    yield_constr.constraint_transition(
+                        local_values[LAST_ROW_IDX] * (
+                            local_values[RES_REM_SUM_IDX + j]
+                            + (local_values[RES_REM_SUM_CARRY_IDX + j] * FE::from_canonical_u64(1<<32))
+                            - local_values[RES_MOD_SUM_IDX + j]
+                            - public_inputs[24+j]
+                            - local_values[RES_REM_SUM_CARRY_IDX + j - 1]
+                        )
+                    )
+                    
+                } else if (j < 24) {
+                    yield_constr.constraint_transition(
+                        local_values[LAST_ROW_IDX] * (
+                            local_values[RES_REM_SUM_IDX + j]
+                            + (local_values[RES_REM_SUM_CARRY_IDX + j] * FE::from_canonical_u64(1<<32))
+                            - local_values[RES_MOD_SUM_IDX + j]
+                            - local_values[RES_REM_SUM_CARRY_IDX + j - 1]
+                        )
+                    )
+                } else {
+                    yield_constr.constraint_transition(
+                        local_values[LAST_ROW_IDX] * (
+                            local_values[RES_REM_SUM_IDX + j]
+                        )
+                    )
+                }
+            }
         }
 
     type EvaluationFrameTarget = StarkFrame<ExtensionTarget<D>, ExtensionTarget<D>, COLUMNS, PUBLIC_INPUTS>;
