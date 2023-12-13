@@ -1,9 +1,9 @@
 use itertools::Itertools;
-use num_bigint::BigUint;
+use num_bigint::{BigUint, ToBigUint};
 use plonky2::{hash::hash_types::RichField, field::{extension::{Extendable, FieldExtension}, types::Field, polynomial::PolynomialValues, packed::PackedField}, util::transpose, iop::ext_target::ExtensionTarget, gates::public_input};
 use starky::{stark::Stark, evaluation_frame::{StarkFrame, StarkEvaluationFrame}, constraint_consumer::ConstraintConsumer};
 
-use crate::native::{get_u32_vec_from_literal_24, get_selector_bits_from_u32, multiply_by_slice, add_u32_slices, get_div_rem_modulus_from_biguint_12, get_u32_vec_from_literal, modulus, add_u32_slices_1};
+use crate::native::{get_u32_vec_from_literal_24, get_selector_bits_from_u32, multiply_by_slice, add_u32_slices, get_div_rem_modulus_from_biguint_12, get_u32_vec_from_literal, modulus, add_u32_slices_1, add_u32_slices_12, self, get_bits_as_array};
 
 // [TODO]
 // 1. Constrain mult result to be < modulus
@@ -34,11 +34,22 @@ pub const ADDITION_CHECK_OFFSET: usize = REDUCED_OFFSET + 12;
 // (div*mod)+res offset
 pub const DIV_RES_SUM_OFFSET: usize = ADDITION_CHECK_OFFSET + 1;
 pub const DIV_RES_CARRY_OFFSET: usize = DIV_RES_SUM_OFFSET + 24;
-pub const TOTAL_COLUMNS: usize = DIV_RES_CARRY_OFFSET + 24;
 
+pub const RANGE_CHECK_SUM_OFFSET: usize = DIV_RES_CARRY_OFFSET + 24;
+pub const RANGE_CHECK_SUM_CARRY_OFFSET: usize = RANGE_CHECK_SUM_OFFSET + 12;
+pub const RANGE_CHECK_BIT_DECOMP_OFFSET: usize = RANGE_CHECK_SUM_CARRY_OFFSET + 12;
+pub const TOTAL_COLUMNS: usize = RANGE_CHECK_BIT_DECOMP_OFFSET + 32;
 
 pub const COLUMNS: usize = TOTAL_COLUMNS;
 pub const PUBLIC_INPUTS: usize = 36;
+
+macro_rules! bit_decomp_32 {
+    ($row:expr, $col:expr, $f:ty, $p:ty) => {
+        ((0..32).fold(<$p>::ZEROS, |acc, i| {
+            acc + $row[$col + i] * <$f>::from_canonical_u64(1 << i)
+        }))
+    };
+}
 
 // A (Fp) * B (Fp) => C (Fp)
 #[derive(Clone)]
@@ -82,6 +93,15 @@ impl<F: RichField + Extendable<D>, const D: usize> FpMultiplicationStark<F, D> {
         let (x_y_sum, x_y_sum_carry) = add_u32_slices(&x, &y);
         self.assign_u32_in_series(row, start_col + DIV_RES_SUM_OFFSET, &x_y_sum);
         self.assign_u32_in_series(row, start_col + DIV_RES_CARRY_OFFSET, &x_y_sum_carry);
+    }
+
+    pub fn fill_range_check_trace(&mut self, x: &[u32; 12], row: usize, start_col: usize) {
+        let y = (BigUint::from(1u32) << 382) - modulus();
+        let y_u32 = get_u32_vec_from_literal(y);
+        let (x_y_sum, x_y_carry) = add_u32_slices_12(&x, &y_u32);
+        self.assign_u32_in_series(row, start_col + RANGE_CHECK_SUM_OFFSET, &x_y_sum);
+        self.assign_u32_in_series(row, start_col + RANGE_CHECK_SUM_CARRY_OFFSET, &x_y_carry);
+        self.assign_u32_in_series(row, start_col + RANGE_CHECK_BIT_DECOMP_OFFSET, &get_bits_as_array(x_y_sum[11]));
     }
 
     // Fills from start_row..end_row+1
@@ -151,6 +171,8 @@ impl<F: RichField + Extendable<D>, const D: usize> FpMultiplicationStark<F, D> {
         rem_24[0..12].copy_from_slice(&rem);
 
         self.fill_addition_trace(&div_x_mod, &rem_24, 11, 0);
+
+        self.fill_range_check_trace(&rem, 0, 0);
 
         self.trace.clone()
     }
@@ -315,6 +337,51 @@ pub fn add_addition_constraints<F: RichField + Extendable<D>, const D: usize, FE
         }
 }
 
+pub fn add_range_check_constraints<F: RichField + Extendable<D>, const D: usize, FE, P, const D2: usize> (
+    local_values: &[P],
+    public_inputs: &[FE],// Sending only slice of what we want
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize, // Starting column of your multiplication trace
+)
+    where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>
+{
+    let y = (BigUint::from(1u32) << 382) - modulus();
+    let y_u32 = get_u32_vec_from_literal(y);
+
+    for j in 0..12 {
+        if j == 0 {
+            yield_constr.constraint_first_row(
+                local_values[start_col + RANGE_CHECK_SUM_OFFSET + j]
+                + (
+                    local_values[start_col + RANGE_CHECK_SUM_CARRY_OFFSET + j]
+                    * FE::from_canonical_u64(1<<32)
+                )
+                - FE::from_canonical_u32(y_u32[j])
+                - public_inputs[j]
+            )
+        }
+        else if j < 12{
+            yield_constr.constraint_first_row(
+                    local_values[start_col + RANGE_CHECK_SUM_OFFSET + j]
+                    + (
+                        local_values[start_col + RANGE_CHECK_SUM_CARRY_OFFSET + j]
+                        * FE::from_canonical_u64(1<<32)
+                    )
+                    - FE::from_canonical_u32(y_u32[j])
+                    - public_inputs[j]
+                    - local_values[start_col + RANGE_CHECK_SUM_CARRY_OFFSET + j - 1]
+            )
+
+        }
+        let bit_col: usize = start_col + RANGE_CHECK_BIT_DECOMP_OFFSET;
+        let val_reconstructed = bit_decomp_32!(local_values, bit_col, FE, P);
+        yield_constr.constraint_first_row(val_reconstructed - local_values[start_col + RANGE_CHECK_SUM_OFFSET + 11]);
+        yield_constr.constraint_first_row(local_values[bit_col + 30]);
+    }
+}
+
 // Implement constraint generator
 impl<F: RichField + Extendable<D>, const D: usize> Stark<F,D> for FpMultiplicationStark<F, D> {
 
@@ -357,6 +424,8 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F,D> for FpMultiplicati
                     (local_values[SUM_OFFSET + j] - local_values[DIV_RES_SUM_OFFSET + j])
                 )
             }
+
+            add_range_check_constraints(local_values, &public_inputs[24..], yield_constr, 0);
         }
 
     type EvaluationFrameTarget = StarkFrame<ExtensionTarget<D>, ExtensionTarget<D>, COLUMNS, PUBLIC_INPUTS>;

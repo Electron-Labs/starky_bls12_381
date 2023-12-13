@@ -83,6 +83,52 @@ pub fn add_u32_slices(x: &[u32; 24], y: &[u32; 24]) -> ([u32; 24], [u32; 24]) {
     (res, carries)
 }
 
+pub fn add_u32_slices_12(x: &[u32; 12], y: &[u32; 12]) -> ([u32; 12], [u32; 12]) {
+    let mut prev_carry = 0u32;
+    let mut res = [0u32; 12];
+    let mut carries = [0u32; 12];
+    for i in 0..12 {
+        let s = x[i] as u64 + y[i] as u64 + prev_carry as u64;
+        let sum = s as u32;
+        let carry = (s >> 32) as u32;
+        prev_carry = carry;
+        res[i] = sum;
+        carries[i] = carry;
+    }
+    (res, carries)
+}
+
+// assume x > y
+pub fn sub_u32_slices(x: &[u32; 12], y: &[u32; 12]) -> ([u32; 12], [u32; 12]) {
+    let mut prev_borrow = 0u32;
+    let mut res = [0u32; 12];
+    let mut borrows = [0u32; 12];
+    for i in 0..12 {
+        if x[i] >= y[i] + prev_borrow {
+            res[i] = x[i]-y[i]-prev_borrow;
+            borrows[i] = 0;
+            prev_borrow = 0;
+        } else {
+            res[i] = ((1u64 << 32) + x[i] as u64 - y[i] as u64 - prev_borrow as u64) as u32;
+            borrows[i] = 1;
+            prev_borrow = 1;
+        }
+    }
+    assert_eq!(borrows[11], 0);
+    (res, borrows)
+}
+
+pub fn get_bits_as_array(number: u32) -> [u32; 32] {
+    let mut result = [0u32; 32]; // Assuming a u32 has 32 bits
+
+    for i in 0..32 {
+        // Shift the 1 bit to the rightmost position and perform bitwise AND
+        result[i] = ((number >> i) & 1) as u32;
+    }
+
+    result
+}
+
 pub fn add_u32_slices_1(x: &[u32; 24], y: &[u32; 25]) -> ([u32; 25], [u32; 24]) {
     let mut x_padded = [0u32; 25];
     x_padded[0..24].copy_from_slice(x);
@@ -1253,7 +1299,7 @@ mod tests {
 
     use crate::native::big_sub;
 
-    use super::{verify_bls_signatures, Fp, Fp12};
+    use super::{verify_bls_signatures, Fp, Fp12, modulus, sub_u32_slices, get_u32_vec_from_literal};
 
     #[test]
     pub fn test1() {
@@ -1296,4 +1342,13 @@ mod tests {
     //     let res = big_sub(pk_x_u32, S_x_1_u32);
     //     assert_eq!(BigUint::new(res), pk_x-S_x_1);
     // }
+    #[test]
+    fn test_subu32() {
+        let x: BigUint = BigUint::from_str("1").unwrap() << 381;
+        let y = modulus();
+        let x_u32 = get_u32_vec_from_literal(x.clone());
+        let y_u32 = get_u32_vec_from_literal(y.clone());
+        let (res, _carries) = sub_u32_slices(&x_u32, &y_u32);
+        assert_eq!( x-y, BigUint::new(res.to_vec()));
+    }
 }
