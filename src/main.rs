@@ -11,6 +11,7 @@ pub mod native;
 pub mod big_arithmetic;
 pub mod fp_mult_starky;
 pub mod fp2_mult_starky;
+pub mod calc_pairing_precomp;
 
 pub const PUBLIC_INPUTS: usize = 72;
 
