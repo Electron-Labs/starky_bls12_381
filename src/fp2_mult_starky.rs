@@ -23,9 +23,6 @@ use crate::native::{
     multiply_by_slice, sub_u32_slices,
 };
 
-// [TODO]
-// 1. Constrain mult result to be < modulus
-// 2. Check global selector failing for mult
 
 // Fp Multiplication layout offsets
 pub const X_INPUT_OFFSET: usize = 0;
@@ -270,29 +267,6 @@ impl<F: RichField + Extendable<D>, const D: usize> Fp2MultiplicationStark<F, D> 
         self.fill_range_check_trace(&rem, start_row, start_col);
     }
 
-    // pub fn fill_fp_multiplication_trace(
-    //     &mut self,
-    //     x: [u32; 12],
-    //     y: [u32; 12],
-    //     start_row: usize,
-    //     end_row: usize,
-    //     start_col: usize,
-    // ) {
-
-    //     let div_x_mod = get_u32_vec_from_literal_24(
-    //         BigUint::new(div.to_vec()) * BigUint::new(modulus.to_vec()),
-    //     );
-
-    //     for i in 0..self.num_rows {
-    //         self.assign_u32_in_series(i, start_col + REDUCED_OFFSET, &rem);
-    //     }
-    //     let mut rem_24 = [0u32; 24];
-    //     rem_24[0..12].copy_from_slice(&rem);
-
-    //     self.fill_addition_trace(&div_x_mod, &rem_24, start_row + 11, start_col);
-
-    //     self.fill_range_check_trace(&rem, start_row, start_col);
-    // }
 
     pub fn generate_trace(&mut self, x: [[u32; 12]; 2], y: [[u32; 12]; 2]) {
         let modulus = modulus();
@@ -535,18 +509,6 @@ pub fn add_subtraction_constraints<
     FE: FieldExtension<D2, BaseField = F>,
     P: PackedField<Scalar = FE>,
 {
-    // for i in 0..12 {
-    //     yield_constr.constraint_transition(
-    //         //local_values[start_col + MULTIPLICATION_SELECTOR_OFFSET] *
-    //         local_values[start_col + SUBTRACTION_X_OFFSET + i]
-    //             - next_values[start_col + SUBTRACTION_X_OFFSET + i],
-    //     );
-    //     yield_constr.constraint_transition(
-    //         //local_values[start_col + MULTIPLICATION_SELECTOR_OFFSET] *
-    //         local_values[start_col + SUBTRACTION_Y_OFFSET + i]
-    //             - next_values[start_col + SUBTRACTION_Y_OFFSET + i],
-    //     );
-    // }
     for j in 0..24 {
         if j == 0 {
             yield_constr.constraint_transition(
