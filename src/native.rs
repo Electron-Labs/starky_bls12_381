@@ -99,7 +99,26 @@ pub fn add_u32_slices_12(x: &[u32; 12], y: &[u32; 12]) -> ([u32; 12], [u32; 12])
 }
 
 // assume x > y
-pub fn sub_u32_slices(x: &[u32; 12], y: &[u32; 12]) -> ([u32; 12], [u32; 12]) {
+pub fn sub_u32_slices(x: &[u32; 24], y: &[u32; 24]) -> ([u32; 24], [u32; 24]) {
+    let mut prev_borrow = 0u32;
+    let mut res = [0u32; 24];
+    let mut borrows = [0u32; 24];
+    for i in 0..24 {
+        if x[i] >= y[i] + prev_borrow {
+            res[i] = x[i]-y[i]-prev_borrow;
+            borrows[i] = 0;
+            prev_borrow = 0;
+        } else {
+            res[i] = ((1u64 << 32) + x[i] as u64 - y[i] as u64 - prev_borrow as u64) as u32;
+            borrows[i] = 1;
+            prev_borrow = 1;
+        }
+    }
+    (res, borrows)
+}
+
+// assume x > y
+pub fn sub_u32_slices_12(x: &[u32; 12], y: &[u32; 12]) -> ([u32; 12], [u32; 12]) {
     let mut prev_borrow = 0u32;
     let mut res = [0u32; 12];
     let mut borrows = [0u32; 12];
@@ -383,7 +402,7 @@ pub fn sum_of_products(a: Vec<Fp>, b: Vec<Fp>) -> Fp{
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Fp2([Fp; 2]);
+pub struct Fp2(pub(crate) [Fp; 2]);
 
 impl Fp2 {
     pub fn zero() -> Fp2 {
@@ -1297,7 +1316,7 @@ mod tests {
     use hex::FromHex;
     use num_bigint::BigUint;
 
-    use crate::native::big_sub;
+    use crate::native::{big_sub, sub_u32_slices_12};
 
     use super::{verify_bls_signatures, Fp, Fp12, modulus, sub_u32_slices, get_u32_vec_from_literal};
 
@@ -1348,7 +1367,7 @@ mod tests {
         let y = modulus();
         let x_u32 = get_u32_vec_from_literal(x.clone());
         let y_u32 = get_u32_vec_from_literal(y.clone());
-        let (res, _carries) = sub_u32_slices(&x_u32, &y_u32);
+        let (res, _carries) = sub_u32_slices_12(&x_u32, &y_u32);
         assert_eq!( x-y, BigUint::new(res.to_vec()));
     }
 }

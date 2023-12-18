@@ -9,6 +9,7 @@ use std::time::Instant;
 pub mod native;
 pub mod big_arithmetic;
 pub mod fp_mult_starky;
+pub mod fp2_mult_starky;
 fn main() {
     // println!("Hello, world!");
     const D: usize = 2;
