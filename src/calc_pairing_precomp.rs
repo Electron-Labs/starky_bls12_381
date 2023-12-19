@@ -82,7 +82,9 @@ pub const Z2_ADDITION_OFFSET: usize =
     X_1_Y_0_MULTIPLICATION_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
 pub const Z2_REDUCE_OFFSET: usize = Z2_ADDITION_OFFSET + ADDITION_TOTAL;
 
-pub const TOTAL_COLUMNS_FP2_MULTIPLICATION: usize = Z2_REDUCE_OFFSET + REDUCE_RANGE_CHECK_TOTAL;
+pub const FP2_MULTIPLICATION_SELECTOR: usize =  Z2_REDUCE_OFFSET + REDUCE_RANGE_CHECK_TOTAL;
+
+pub const TOTAL_COLUMNS_FP2_MULTIPLICATION: usize = MULTIPLICATION_SELECTOR_OFFSET + 1;
 
 pub const Z_MULT_Z_INV_OFFSET: usize = 0;
 pub const X_MULT_Z_INV_OFFSET: usize = Z_MULT_Z_INV_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
@@ -349,6 +351,10 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         let x0y1_x1y0 =
             get_u32_vec_from_literal_24(BigUint::new(x0y1.to_vec()) + BigUint::new(x1y0.to_vec()));
         self.fill_reduction_and_range_check_trace(&x0y1_x1y0, start_row, end_row, start_col + Z2_REDUCE_OFFSET);
+
+        for i in start_row..end_row+1 {
+            self.trace[i][start_col + FP2_MULTIPLICATION_SELECTOR] = F::ONE;
+        }
     }
 
     pub fn generate_trace(&mut self, x: [[u32; 12]; 2], y: [[u32; 12]; 2], z:[[u32; 12]; 2]) {
@@ -381,6 +387,8 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
             }
             self.trace[row][QZ_OFFSET] = F::ONE;
         }
+
+
     }
 
 }
