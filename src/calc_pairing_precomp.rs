@@ -96,6 +96,18 @@ pub const X1_Y_MULTIPLICATION_OFFSET:  usize = X0_Y_REDUCE_RANGECHECK_OFFSET + R
 pub const X1_Y_REDUCE_RANGECHECK_OFFSET: usize = X1_Y_MULTIPLICATION_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
 pub const FP2_FP_TOTAL_COLUMNS: usize = X1_Y_REDUCE_RANGECHECK_OFFSET + REDUCE_RANGE_CHECK_TOTAL;
 
+// Multiply by B layout offsets
+pub const MULTIPLY_B_SELECTOR_OFFSET: usize = 0;
+pub const MULTIPLY_B_X_OFFSET: usize = MULTIPLY_B_SELECTOR_OFFSET + 1;
+pub const MULTIPLY_B_X0_B_MUL_OFFSET: usize = MULTIPLY_B_X_OFFSET + 24;
+pub const MULTIPLY_B_X1_B_MUL_OFFSET: usize = MULTIPLY_B_X0_B_MUL_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
+pub const MULTIPLY_B_ADD_MODSQ_OFFSET: usize = MULTIPLY_B_X1_B_MUL_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
+pub const MULTIPLY_B_SUB_OFFSET: usize = MULTIPLY_B_ADD_MODSQ_OFFSET + ADDITION_TOTAL;
+pub const MULTIPLY_B_Z0_OFFSET: usize = MULTIPLY_B_SUB_OFFSET + SUBTRACTION_TOTAL;
+pub const MULTIPLY_B_ADD_OFFSET: usize = MULTIPLY_B_Z0_OFFSET + REDUCE_RANGE_CHECK_TOTAL;
+pub const MULTIPLY_B_Z1_OFFSET: usize = MULTIPLY_B_ADD_OFFSET + ADDITION_TOTAL;
+pub const MULTIPLY_B_TOTAL_COLUMS: usize = MULTIPLY_B_Z1_OFFSET + REDUCE_RANGE_CHECK_TOTAL;
+
 pub const Z_MULT_Z_INV_OFFSET: usize = 0;
 pub const X_MULT_Z_INV_OFFSET: usize = Z_MULT_Z_INV_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
 pub const Y_MULT_Z_INV_OFFSET: usize = X_MULT_Z_INV_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
@@ -381,6 +393,36 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         self.fill_multiplication_trace_no_mod_reduction(x[1], y, start_row, end_row, start_col + X1_Y_MULTIPLICATION_OFFSET);
         let x1y = get_u32_vec_from_literal_24(BigUint::new(x[1].to_vec()) * BigUint::new(y.to_vec()));
         self.fill_reduction_and_range_check_trace(&x1y, start_row, end_row, start_col + X1_Y_REDUCE_RANGECHECK_OFFSET);
+    }
+
+    pub fn fill_multiply_by_b_trace(&mut self, x: &[&[u32; 12]; 2], start_row: usize, end_row: usize, start_col: usize) {
+        for i in start_row..end_row + 1 {
+            self.trace[i][start_col + MULTIPLY_B_SELECTOR_OFFSET] = F::ONE;
+            self.assign_u32_in_series(i, start_col + MULTIPLY_B_X_OFFSET, x[0]);
+            self.assign_u32_in_series(i, start_col + MULTIPLY_B_X_OFFSET + 12, x[1]);
+        }
+        self.trace[end_row][start_col + MULTIPLY_B_SELECTOR_OFFSET] = F::ZERO;
+        let y = Fp::get_fp_from_biguint(BigUint::from(4 as u32)).0;
+        self.fill_multiplication_trace_no_mod_reduction(x[0], &y, start_row, end_row, start_col + MULTIPLY_B_X0_B_MUL_OFFSET);
+        self.fill_multiplication_trace_no_mod_reduction(x[1], &y, start_row, end_row, start_col + MULTIPLY_B_X1_B_MUL_OFFSET);
+        let x0y = get_u32_vec_from_literal_24(BigUint::new(x[0].to_vec()) * BigUint::new(y.to_vec()));
+        let x1y = get_u32_vec_from_literal_24(BigUint::new(x[1].to_vec()) * BigUint::new(y.to_vec()));
+        let modulus = modulus();
+        let modulus_sq = get_u32_vec_from_literal_24(modulus.clone() * modulus.clone());
+        self.fill_addition_trace(&x0y, &modulus_sq, start_row + 11, start_col + MULTIPLY_B_ADD_MODSQ_OFFSET);
+        let x0y_add_modsq =
+            get_u32_vec_from_literal_24(BigUint::new(x0y.to_vec()) + BigUint::new(modulus_sq.to_vec()));
+        self.fill_subtraction_trace(&x0y_add_modsq, &x1y, start_row + 11, start_col + MULTIPLY_B_SUB_OFFSET);
+        let x0y_x1y = get_u32_vec_from_literal_24(
+            BigUint::new(x0y_add_modsq.to_vec()) - BigUint::new(x1y.to_vec()),
+        );
+        self.fill_reduction_and_range_check_trace(&x0y_x1y, start_row, end_row, start_col + MULTIPLY_B_Z0_OFFSET);
+
+        self.fill_addition_trace(&x0y, &x1y, start_row + 11, start_col + MULTIPLY_B_ADD_OFFSET);
+        let x0y_x1y = get_u32_vec_from_literal_24(
+            BigUint::new(x0y.to_vec()) + BigUint::new(x1y.to_vec()),
+        );
+        self.fill_reduction_and_range_check_trace(&x0y_x1y, start_row, end_row, start_col + MULTIPLY_B_Z1_OFFSET);
     }
 
     pub fn generate_trace(&mut self, x: [[u32; 12]; 2], y: [[u32; 12]; 2], z:[[u32; 12]; 2]) {
@@ -1003,6 +1045,117 @@ fn add_fp2_fp_mul_constraints<
     add_reduce_range_check_constraints(local_values, next_values, yield_constr, start_col + X0_Y_REDUCE_RANGECHECK_OFFSET);
     add_multiplication_constraints(local_values, next_values, yield_constr, start_col + X1_Y_MULTIPLICATION_OFFSET);
     add_reduce_range_check_constraints(local_values, next_values, yield_constr, start_col + X1_Y_REDUCE_RANGECHECK_OFFSET);
+}
+
+fn add_multiply_by_b_constraints<
+    F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize,
+    >(
+    local_values: &[P],
+    next_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize, // Starting column of your multiplication trace
+    ) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    for i in 0..12 {
+        yield_constr.constraint_transition(
+            local_values[start_col + MULTIPLY_B_SELECTOR_OFFSET] * (
+                local_values[start_col + MULTIPLY_B_X_OFFSET + i] - next_values[start_col + MULTIPLY_B_X_OFFSET + i]
+            )
+        );
+        yield_constr.constraint_transition(
+            local_values[start_col + MULTIPLY_B_SELECTOR_OFFSET] * (
+                local_values[start_col + MULTIPLY_B_X_OFFSET + 12 + i] - next_values[start_col + MULTIPLY_B_X_OFFSET + 12 + i]
+            )
+        );
+        yield_constr.constraint(
+            local_values[start_col + MULTIPLY_B_SELECTOR_OFFSET] * (
+                local_values[start_col + MULTIPLY_B_X_OFFSET + i] - local_values[start_col + MULTIPLY_B_X0_B_MUL_OFFSET + X_INPUT_OFFSET + i]
+            )
+        );
+        yield_constr.constraint(
+            local_values[start_col + MULTIPLY_B_SELECTOR_OFFSET] * (
+                local_values[start_col + MULTIPLY_B_X_OFFSET + 12 + i] - local_values[start_col + MULTIPLY_B_X1_B_MUL_OFFSET + X_INPUT_OFFSET + i]
+            )
+        );
+        if i == 0 {
+            yield_constr.constraint(
+                local_values[start_col + MULTIPLY_B_SELECTOR_OFFSET] * (
+                    local_values[start_col + MULTIPLY_B_X0_B_MUL_OFFSET + Y_INPUT_OFFSET + i] - FE::from_canonical_u32(4)
+                )
+            );
+            yield_constr.constraint(
+                local_values[start_col + MULTIPLY_B_SELECTOR_OFFSET] * (
+                    local_values[start_col + MULTIPLY_B_X1_B_MUL_OFFSET + Y_INPUT_OFFSET + i] - FE::from_canonical_u32(4)
+                )
+            );
+        } else {
+            yield_constr.constraint(
+                local_values[start_col + MULTIPLY_B_SELECTOR_OFFSET] * local_values[start_col + MULTIPLY_B_X0_B_MUL_OFFSET + Y_INPUT_OFFSET + i]
+            );
+            yield_constr.constraint(
+                local_values[start_col + MULTIPLY_B_SELECTOR_OFFSET] * local_values[start_col + MULTIPLY_B_X1_B_MUL_OFFSET + Y_INPUT_OFFSET + i]
+            );
+        }
+    }
+    add_multiplication_constraints(local_values, next_values, yield_constr, start_col + MULTIPLY_B_X0_B_MUL_OFFSET);
+    add_multiplication_constraints(local_values, next_values, yield_constr, start_col + MULTIPLY_B_X1_B_MUL_OFFSET);
+    let modulus = modulus();
+    let modulus_sq_u32 = get_u32_vec_from_literal_24(modulus.clone() * modulus);
+    for i in 0..24 {
+        yield_constr.constraint(
+            local_values[start_col + MULTIPLY_B_ADD_MODSQ_OFFSET + ADDITION_CHECK_OFFSET] * (
+                local_values[start_col + MULTIPLY_B_ADD_MODSQ_OFFSET + ADDITION_X_OFFSET + i] - local_values[start_col + MULTIPLY_B_X0_B_MUL_OFFSET + SUM_OFFSET + i]
+            )
+        );
+        yield_constr.constraint(
+            local_values[start_col + MULTIPLY_B_ADD_MODSQ_OFFSET + ADDITION_CHECK_OFFSET] * (
+                local_values[start_col + MULTIPLY_B_ADD_MODSQ_OFFSET + ADDITION_Y_OFFSET + i] - FE::from_canonical_u32(modulus_sq_u32[i])
+            )
+        );
+        yield_constr.constraint(
+            local_values[start_col + MULTIPLY_B_SUB_OFFSET + SUBTRACTION_CHECK_OFFSET] * (
+                local_values[start_col + MULTIPLY_B_SUB_OFFSET + SUBTRACTION_X_OFFSET + i] - local_values[start_col + MULTIPLY_B_ADD_MODSQ_OFFSET + ADDITION_SUM_OFFSET + i]
+            )
+        );
+        yield_constr.constraint(
+            local_values[start_col + MULTIPLY_B_SUB_OFFSET + SUBTRACTION_CHECK_OFFSET] * (
+                local_values[start_col + MULTIPLY_B_SUB_OFFSET + SUBTRACTION_Y_OFFSET + i] - local_values[start_col + MULTIPLY_B_X1_B_MUL_OFFSET + SUM_OFFSET + i]
+            )
+        );
+        yield_constr.constraint(
+            local_values[start_col + MULTIPLY_B_ADD_OFFSET + ADDITION_CHECK_OFFSET] * (
+                local_values[start_col + MULTIPLY_B_ADD_OFFSET + ADDITION_X_OFFSET + i] - local_values[start_col + MULTIPLY_B_X0_B_MUL_OFFSET + SUM_OFFSET + i]
+            )
+        );
+        yield_constr.constraint(
+            local_values[start_col + MULTIPLY_B_ADD_OFFSET + ADDITION_CHECK_OFFSET] * (
+                local_values[start_col + MULTIPLY_B_ADD_OFFSET + ADDITION_Y_OFFSET + i] - local_values[start_col + MULTIPLY_B_X1_B_MUL_OFFSET + SUM_OFFSET + i]
+            )
+        );
+    }
+    add_addition_constraints(local_values, yield_constr, start_col + MULTIPLY_B_ADD_MODSQ_OFFSET);
+    add_subtraction_constraints(local_values, yield_constr, start_col + MULTIPLY_B_SUB_OFFSET);
+    add_addition_constraints(local_values, yield_constr, start_col + MULTIPLY_B_ADD_OFFSET);
+    for i in 0..24 {
+        yield_constr.constraint(
+            local_values[start_col + MULTIPLY_B_SUB_OFFSET + SUBTRACTION_CHECK_OFFSET] * (
+                local_values[start_col + MULTIPLY_B_Z0_OFFSET + REDUCE_X_OFFSET + i] - local_values[start_col + MULTIPLY_B_SUB_OFFSET + SUBTRACTION_DIFF_OFFSET + i]
+            )
+        );
+        yield_constr.constraint(
+            local_values[start_col + MULTIPLY_B_ADD_OFFSET + ADDITION_CHECK_OFFSET] * (
+                local_values[start_col + MULTIPLY_B_Z1_OFFSET + REDUCE_X_OFFSET + i] - local_values[start_col + MULTIPLY_B_ADD_OFFSET + ADDITION_SUM_OFFSET + i]
+            )
+        );
+    }
+    add_reduce_range_check_constraints(local_values, next_values, yield_constr, start_col + MULTIPLY_B_Z0_OFFSET);
+    add_reduce_range_check_constraints(local_values, next_values, yield_constr, start_col + MULTIPLY_B_Z1_OFFSET);
 }
 
 // Implement constraint generator
