@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use itertools::Itertools;
 use num_bigint::BigUint;
 use plonky2::{
@@ -20,7 +22,7 @@ use starky::{
 use crate::native::{
     add_u32_slices, add_u32_slices_12, get_bits_as_array, get_div_rem_modulus_from_biguint_12,
     get_selector_bits_from_u32, get_u32_vec_from_literal, get_u32_vec_from_literal_24, modulus,
-    multiply_by_slice, sub_u32_slices, Fp, Fp2,
+    multiply_by_slice, sub_u32_slices, Fp, Fp2, calc_qs, calc_precomp_stuff_loop0,
 };
 
 
@@ -65,7 +67,10 @@ pub const RANGE_CHECK_BIT_DECOMP_OFFSET: usize = RANGE_CHECK_SUM_CARRY_OFFSET + 
 pub const REDUCE_RANGE_CHECK_TOTAL: usize = RANGE_CHECK_BIT_DECOMP_OFFSET + 32;
 
 // Fp2 Multiplication layout offsets
-pub const X_0_Y_0_MULTIPLICATION_OFFSET: usize = 0;
+pub const FP2_FP2_SELECTOR_OFFSET: usize = 0;
+pub const FP2_FP2_X_INPUT_OFFSET: usize = FP2_FP2_SELECTOR_OFFSET + 1;
+pub const FP2_FP2_Y_INPUT_OFFSET: usize = FP2_FP2_X_INPUT_OFFSET + 24;
+pub const X_0_Y_0_MULTIPLICATION_OFFSET: usize = FP2_FP2_Y_INPUT_OFFSET + 24;
 pub const X_1_Y_1_MULTIPLICATION_OFFSET: usize =
     X_0_Y_0_MULTIPLICATION_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
 
@@ -82,9 +87,7 @@ pub const Z2_ADDITION_OFFSET: usize =
     X_1_Y_0_MULTIPLICATION_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
 pub const Z2_REDUCE_OFFSET: usize = Z2_ADDITION_OFFSET + ADDITION_TOTAL;
 
-pub const FP2_MULTIPLICATION_SELECTOR: usize =  Z2_REDUCE_OFFSET + REDUCE_RANGE_CHECK_TOTAL;
-
-pub const TOTAL_COLUMNS_FP2_MULTIPLICATION: usize = MULTIPLICATION_SELECTOR_OFFSET + 1;
+pub const TOTAL_COLUMNS_FP2_MULTIPLICATION: usize = Z2_REDUCE_OFFSET + REDUCE_RANGE_CHECK_TOTAL;
 
 // Fp2 * Fp multiplication layout offsets
 pub const FP2_FP_MUL_SELECTOR_OFFSET: usize = 0;
@@ -133,7 +136,17 @@ pub const QX_OFFSET: usize = Y_MULT_Z_INV_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICAT
 pub const QY_OFFSET: usize = QX_OFFSET + 24;
 pub const QZ_OFFSET: usize = QY_OFFSET + 24;
 
-pub const TOTAL_COLUMNS: usize = QZ_OFFSET + 24;
+pub const T0_CALC_OFFSET: usize = QZ_OFFSET + 24;
+pub const T1_CALC_OFFSET: usize = T0_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const X0_CALC_OFFSET: usize = T1_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const T2_CALC_OFFSET: usize = X0_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
+pub const T3_CALC_OFFSET: usize = T2_CALC_OFFSET + MULTIPLY_B_TOTAL_COLUMS;
+pub const X1_CALC_OFFSET: usize = T3_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
+pub const T4_CALC_OFFSET: usize = X1_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const X3_CALC_OFFSET: usize = T4_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
+pub const X4_CALC_OFFSET: usize = X3_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const X5_CALC_OFFSET: usize = X4_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
+pub const TOTAL_COLUMNS: usize = X5_CALC_OFFSET + FP2_ADDITION_TOTAL;
 
 pub const COLUMNS: usize = TOTAL_COLUMNS;
 pub const PUBLIC_INPUTS: usize = 72;
@@ -383,6 +396,14 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
     pub fn generate_trace_fp2_mul(&mut self, x: [[u32; 12]; 2], y: [[u32; 12]; 2], start_row: usize, end_row: usize,start_col: usize) {
         let modulus = modulus();
 
+        for i in start_row..end_row+1 {
+            self.trace[i][start_col + FP2_FP2_SELECTOR_OFFSET] = F::ONE;
+            self.assign_u32_in_series(i, start_col + FP2_FP2_X_INPUT_OFFSET, &x[0]);
+            self.assign_u32_in_series(i, start_col + FP2_FP2_X_INPUT_OFFSET+12, &x[1]);
+            self.assign_u32_in_series(i, start_col + FP2_FP2_Y_INPUT_OFFSET, &y[0]);
+            self.assign_u32_in_series(i, start_col + FP2_FP2_Y_INPUT_OFFSET+12, &y[1]);
+        }
+        self.trace[end_row][start_col + FP2_FP2_SELECTOR_OFFSET] = F::ZERO;
         // filling trace for X0*Y0 - X1*Y1
         self.fill_multiplication_trace_no_mod_reduction(
             &x[0],
@@ -440,10 +461,6 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         let x0y1_x1y0 =
             get_u32_vec_from_literal_24(BigUint::new(x0y1.to_vec()) + BigUint::new(x1y0.to_vec()));
         self.fill_reduction_and_range_check_trace(&x0y1_x1y0, start_row, end_row, start_col + Z2_REDUCE_OFFSET);
-
-        for i in start_row..end_row+1 {
-            self.trace[i][start_col + FP2_MULTIPLICATION_SELECTOR] = F::ONE;
-        }
     }
 
     pub fn fill_trace_fp2_fp_mul(&mut self, x: &[[u32; 12]; 2], y: &[u32; 12], start_row: usize, end_row: usize, start_col: usize) {
@@ -510,20 +527,48 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         // Calculate ay = y * (z_inv)
         self.generate_trace_fp2_mul(y, z_inv_slice, 0, 15, Y_MULT_Z_INV_OFFSET);
 
+        let (Qx, Qy, Qz) = calc_qs(
+            Fp2([Fp(x[0]), Fp(x[1])]), Fp2([Fp(y[0]), Fp(y[1])]), Fp2([Fp(z[0]), Fp(z[1])])
+        );
+
         // Fill Qx, Qy, Qz for all rows
         for row in 0..self._num_rows {
             for i in 0..12 {
-                self.trace[row][QX_OFFSET + i] = self.trace[0][X_MULT_Z_INV_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i];
-                self.trace[row][QX_OFFSET + i + 12] = self.trace[0][X_MULT_Z_INV_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i];
-                self.trace[row][QY_OFFSET + i] = self.trace[0][Y_MULT_Z_INV_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i];
-                self.trace[row][QY_OFFSET + i + 12] = self.trace[0][Y_MULT_Z_INV_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i];
+                self.trace[row][QX_OFFSET + i] = F::from_canonical_u64(Qx.0[0].0[i] as u64);//self.trace[0][X_MULT_Z_INV_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i];
+                self.trace[row][QX_OFFSET + i + 12] = F::from_canonical_u64(Qx.0[1].0[i] as u64);//self.trace[0][X_MULT_Z_INV_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i];
+                self.trace[row][QY_OFFSET + i] = F::from_canonical_u64(Qy.0[0].0[i] as u64);//self.trace[0][Y_MULT_Z_INV_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i];
+                self.trace[row][QY_OFFSET + i + 12] = F::from_canonical_u64(Qy.0[1].0[i] as u64);//self.trace[0][Y_MULT_Z_INV_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i];
                 self.trace[row][QZ_OFFSET + i] = F::ZERO;
                 self.trace[row][QZ_OFFSET + i + 12] = F::ZERO;
             }
             self.trace[row][QZ_OFFSET] = F::ONE;
         }
 
+        let (Rx, Ry, Rz) = (Qx, Qy, Qz);
 
+        // Loop 0
+        let values_0 = calc_precomp_stuff_loop0(Qx, Qy, Qz, Qx, Qy, Qz);
+        // t0
+        self.generate_trace_fp2_mul(Ry.get_u32_slice(), Ry.get_u32_slice(), 0, 15, T0_CALC_OFFSET);
+        // t1
+        self.generate_trace_fp2_mul(Rz.get_u32_slice(), Rz.get_u32_slice(), 0, 15, T1_CALC_OFFSET);
+        // x0
+        self.fill_trace_fp2_fp_mul(&values_0[4].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, 0, 15, X0_CALC_OFFSET);
+        // t2
+        self.fill_multiply_by_b_trace(&values_0[5].get_u32_slice(), 0, 15, T2_CALC_OFFSET);
+        // t3
+        self.fill_trace_fp2_fp_mul(&values_0[6].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, 0, 15, T3_CALC_OFFSET);
+        // x1
+        self.generate_trace_fp2_mul(Ry.get_u32_slice(), Rz.get_u32_slice(), 0, 15, X1_CALC_OFFSET);
+        // t4
+        self.fill_trace_fp2_fp_mul(&values_0[8].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("2").unwrap()).0, 0, 15, T4_CALC_OFFSET);
+        // TODO x2 subtraction implement
+        // x3
+        self.generate_trace_fp2_mul(Rx.get_u32_slice(), Rx.get_u32_slice(), 0, 15, X3_CALC_OFFSET);
+        // x4
+        self.fill_trace_fp2_fp_mul(&values_0[10].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, 0, 15, X4_CALC_OFFSET);
+        // x5
+        self.fill_trace_negate_fp2(&values_0[9].get_u32_slice(), 11, X5_CALC_OFFSET);
     }
 
 }
@@ -1004,7 +1049,6 @@ fn add_fp2_mul_constraints<
 >(
     local_values: &[P],
     next_values: &[P],
-    match_inputs: &[P],
     yield_constr: &mut ConstraintConsumer<P>,
     start_col: usize, // Starting column of your multiplication trace
 ) where
@@ -1015,37 +1059,37 @@ fn add_fp2_mul_constraints<
     //     yield_constr.constraint_transition(local_values[start_col + X_0_Y_0_MULTIPLICATION_OFFSET + X_INPUT_OFFSET + i])
     // }
     for i in 0..12 {
-        yield_constr.constraint_first_row(
-            local_values[start_col + X_0_Y_0_MULTIPLICATION_OFFSET + X_INPUT_OFFSET + i] -
-            match_inputs[i]
+        yield_constr.constraint(local_values[start_col + FP2_FP2_SELECTOR_OFFSET] * 
+            (local_values[start_col + X_0_Y_0_MULTIPLICATION_OFFSET + X_INPUT_OFFSET + i] -
+            local_values[start_col + FP2_FP2_X_INPUT_OFFSET + i])
         );
-        yield_constr.constraint_first_row(
-            local_values[start_col + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET + i] -
-            match_inputs[i+12]
+        yield_constr.constraint(local_values[start_col + FP2_FP2_SELECTOR_OFFSET] * 
+            (local_values[start_col + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET + i] -
+            local_values[start_col + FP2_FP2_Y_INPUT_OFFSET + i])
         );
-        yield_constr.constraint_first_row(
-            local_values[start_col + X_0_Y_1_MULTIPLICATION_OFFSET + X_INPUT_OFFSET + i] -
-            match_inputs[i+24]
+        yield_constr.constraint(local_values[start_col + FP2_FP2_SELECTOR_OFFSET] * 
+            (local_values[start_col + X_0_Y_1_MULTIPLICATION_OFFSET + X_INPUT_OFFSET + i] -
+            local_values[start_col + FP2_FP2_X_INPUT_OFFSET + i])
         );
-        yield_constr.constraint_first_row(
-            local_values[start_col + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET + i] -
-            match_inputs[i+36]
+        yield_constr.constraint(local_values[start_col + FP2_FP2_SELECTOR_OFFSET] * 
+            (local_values[start_col + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET + i] -
+            local_values[start_col + FP2_FP2_Y_INPUT_OFFSET + i + 12])
         );
-        yield_constr.constraint_first_row(
-            local_values[start_col + X_1_Y_0_MULTIPLICATION_OFFSET + X_INPUT_OFFSET + i] -
-            match_inputs[i+48]
+        yield_constr.constraint(local_values[start_col + FP2_FP2_SELECTOR_OFFSET] * 
+            (local_values[start_col + X_1_Y_0_MULTIPLICATION_OFFSET + X_INPUT_OFFSET + i] -
+            local_values[start_col + FP2_FP2_X_INPUT_OFFSET + i + 12])
         );
-        yield_constr.constraint_first_row(
-            local_values[start_col + X_1_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET + i] -
-            match_inputs[i+60]
+        yield_constr.constraint(local_values[start_col + FP2_FP2_SELECTOR_OFFSET] * 
+            (local_values[start_col + X_1_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET + i] -
+            local_values[start_col + FP2_FP2_Y_INPUT_OFFSET + i])
         );
-        yield_constr.constraint_first_row(
-            local_values[start_col + X_1_Y_1_MULTIPLICATION_OFFSET + X_INPUT_OFFSET + i] -
-            match_inputs[i+72]
+        yield_constr.constraint(local_values[start_col + FP2_FP2_SELECTOR_OFFSET] * 
+            (local_values[start_col + X_1_Y_1_MULTIPLICATION_OFFSET + X_INPUT_OFFSET + i] -
+            local_values[start_col + FP2_FP2_X_INPUT_OFFSET + i + 12])
         );
-        yield_constr.constraint_first_row(
-            local_values[start_col + X_1_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET + i] -
-            match_inputs[i+84]
+        yield_constr.constraint(local_values[start_col + FP2_FP2_SELECTOR_OFFSET] * 
+            (local_values[start_col + X_1_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET + i] -
+            local_values[start_col + FP2_FP2_Y_INPUT_OFFSET + i + 12])
         );
     }
 
@@ -1397,48 +1441,84 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for PairingPrecom
                 local_values[Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
             )
         }
-        let match_inputs_z_mult_z_inv: Vec<P> = [
-            &public_inputs[Z0_PUBLIC_INPUTS_OFFSET..Z0_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
-            &local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
-            &public_inputs[Z0_PUBLIC_INPUTS_OFFSET..Z0_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
-            &local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
-            &public_inputs[Z1_PUBLIC_INPUTS_OFFSET..Z1_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
-            &local_values[Z_MULT_Z_INV_OFFSET + X_1_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_1_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
-            &public_inputs[Z1_PUBLIC_INPUTS_OFFSET..Z1_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
-            &local_values[Z_MULT_Z_INV_OFFSET + X_1_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_1_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
-            ].concat();
-        add_fp2_mul_constraints(local_values, next_values, &match_inputs_z_mult_z_inv,yield_constr, 0);
+        // let match_inputs_z_mult_z_inv: Vec<P> = [
+        //     &public_inputs[Z0_PUBLIC_INPUTS_OFFSET..Z0_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
+        //     &local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
+        //     &public_inputs[Z0_PUBLIC_INPUTS_OFFSET..Z0_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
+        //     &local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
+        //     &public_inputs[Z1_PUBLIC_INPUTS_OFFSET..Z1_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
+        //     &local_values[Z_MULT_Z_INV_OFFSET + X_1_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_1_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
+        //     &public_inputs[Z1_PUBLIC_INPUTS_OFFSET..Z1_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
+        //     &local_values[Z_MULT_Z_INV_OFFSET + X_1_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_1_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
+        //     ].concat();
+        for i in 0..12 {
+            yield_constr.constraint_first_row(
+                local_values[Z_MULT_Z_INV_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] - public_inputs[Z0_PUBLIC_INPUTS_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[Z_MULT_Z_INV_OFFSET + FP2_FP2_X_INPUT_OFFSET + 12 + i] - public_inputs[Z1_PUBLIC_INPUTS_OFFSET + i]
+            );
+        }
+        add_fp2_mul_constraints(local_values, next_values,yield_constr, 0);
 
 
         // Constrain ax = x * z_inv
         // Constrain Z-inv matches with last Z_MULT_Z_INV
         // COnstraint X match with public input
-        let match_inputs_x_mult_z_inv: Vec<P> = [
-            &public_inputs[X0_PUBLIC_INPUTS_OFFSET..X0_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
-            &local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
-            &public_inputs[X0_PUBLIC_INPUTS_OFFSET..X0_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
-            &local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
-            &public_inputs[X1_PUBLIC_INPUTS_OFFSET..X1_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
-            &local_values[Z_MULT_Z_INV_OFFSET + X_1_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_1_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
-            &public_inputs[X1_PUBLIC_INPUTS_OFFSET..X1_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
-            &local_values[Z_MULT_Z_INV_OFFSET + X_1_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_1_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
-        ].concat();
-        add_fp2_mul_constraints(local_values, next_values, &match_inputs_x_mult_z_inv,yield_constr, X_MULT_Z_INV_OFFSET);
+        // let match_inputs_x_mult_z_inv: Vec<P> = [
+        //     &public_inputs[X0_PUBLIC_INPUTS_OFFSET..X0_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
+        //     &local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
+        //     &public_inputs[X0_PUBLIC_INPUTS_OFFSET..X0_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
+        //     &local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
+        //     &public_inputs[X1_PUBLIC_INPUTS_OFFSET..X1_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
+        //     &local_values[Z_MULT_Z_INV_OFFSET + X_1_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_1_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
+        //     &public_inputs[X1_PUBLIC_INPUTS_OFFSET..X1_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
+        //     &local_values[Z_MULT_Z_INV_OFFSET + X_1_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_1_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
+        // ].concat();
+        for i in 0..12 {
+            yield_constr.constraint_first_row(
+                local_values[X_MULT_Z_INV_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] - public_inputs[X0_PUBLIC_INPUTS_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[X_MULT_Z_INV_OFFSET + FP2_FP2_X_INPUT_OFFSET + 12 + i] - public_inputs[X1_PUBLIC_INPUTS_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[X_MULT_Z_INV_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] - local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[X_MULT_Z_INV_OFFSET + FP2_FP2_Y_INPUT_OFFSET + 12 + i] - local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET + i]
+            );
+        }
+        add_fp2_mul_constraints(local_values, next_values,yield_constr, X_MULT_Z_INV_OFFSET);
 
         // Constrain ay = y * z_inv
         // Constrain Z-inv matches with last Z_MULT_Z_INV
         // COnstraint Y match with public input
-        let match_inputs_y_mult_z_inv: Vec<P> = [
-            &public_inputs[Y0_PUBLIC_INPUTS_OFFSET..Y0_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
-            &local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
-            &public_inputs[Y0_PUBLIC_INPUTS_OFFSET..Y0_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
-            &local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
-            &public_inputs[Y1_PUBLIC_INPUTS_OFFSET..Y1_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
-            &local_values[Z_MULT_Z_INV_OFFSET + X_1_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_1_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
-            &public_inputs[Y1_PUBLIC_INPUTS_OFFSET..Y1_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
-            &local_values[Z_MULT_Z_INV_OFFSET + X_1_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_1_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
-        ].concat();
-        add_fp2_mul_constraints(local_values, next_values, &match_inputs_y_mult_z_inv, yield_constr, Y_MULT_Z_INV_OFFSET);
+        // let match_inputs_y_mult_z_inv: Vec<P> = [
+        //     &public_inputs[Y0_PUBLIC_INPUTS_OFFSET..Y0_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
+        //     &local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
+        //     &public_inputs[Y0_PUBLIC_INPUTS_OFFSET..Y0_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
+        //     &local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
+        //     &public_inputs[Y1_PUBLIC_INPUTS_OFFSET..Y1_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
+        //     &local_values[Z_MULT_Z_INV_OFFSET + X_1_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_1_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
+        //     &public_inputs[Y1_PUBLIC_INPUTS_OFFSET..Y1_PUBLIC_INPUTS_OFFSET+12].iter().map(|x| P::ZEROS + x.clone()).collect::<Vec<P>>(),
+        //     &local_values[Z_MULT_Z_INV_OFFSET + X_1_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET..Z_MULT_Z_INV_OFFSET + X_1_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET+12],
+        // ].concat();
+        for i in 0..12 {
+            yield_constr.constraint_first_row(
+                local_values[Y_MULT_Z_INV_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] - public_inputs[Y0_PUBLIC_INPUTS_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[Y_MULT_Z_INV_OFFSET + FP2_FP2_X_INPUT_OFFSET + 12 + i] - public_inputs[Y1_PUBLIC_INPUTS_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[Y_MULT_Z_INV_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] - local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_0_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[Y_MULT_Z_INV_OFFSET + FP2_FP2_Y_INPUT_OFFSET + 12 + i] - local_values[Z_MULT_Z_INV_OFFSET + X_0_Y_1_MULTIPLICATION_OFFSET + Y_INPUT_OFFSET + i]
+            );
+        }
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, Y_MULT_Z_INV_OFFSET);
 
         // Constrain Qx, Qy, Qz
         for i in 0..12 {
@@ -1478,7 +1558,215 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for PairingPrecom
             yield_constr.constraint_transition(local_values[QY_OFFSET + i] - next_values[QY_OFFSET + i]);
             yield_constr.constraint_transition(local_values[QZ_OFFSET + i] - next_values[QZ_OFFSET + i]);
         }
-    }
+
+
+        // t0
+        for i in 0..24 {
+            yield_constr.constraint_first_row(
+                local_values[T0_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] - 
+                local_values[QY_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[T0_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] - 
+                local_values[QY_OFFSET + i]
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, T0_CALC_OFFSET);
+
+
+        // T1
+        for i in 0..24 {
+            yield_constr.constraint_first_row(
+                local_values[T1_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] - 
+                local_values[QZ_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[T1_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] - 
+                local_values[QZ_OFFSET + i]
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, T1_CALC_OFFSET);
+
+
+        // X0
+        for i in 0..12 {
+            yield_constr.constraint_first_row(
+                local_values[X0_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + i] - 
+                local_values[T1_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[X0_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + 12 + i] - 
+                local_values[T1_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+            );
+            if i == 0 {
+                yield_constr.constraint_first_row(
+                    local_values[X0_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET] - 
+                    FE::from_canonical_u32(3 as u32)
+                );
+            } else {
+                yield_constr.constraint_first_row(
+                    local_values[X0_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i]
+                );
+            }
+        }
+
+        add_fp2_fp_mul_constraints(local_values, next_values, yield_constr, X0_CALC_OFFSET);
+
+        // T2
+        for i in 0..12 {
+            yield_constr.constraint_first_row(
+                local_values[X0_CALC_OFFSET + X0_Y_REDUCE_RANGECHECK_OFFSET + REDUCED_OFFSET + i] - 
+                local_values[T2_CALC_OFFSET + MULTIPLY_B_X_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[X0_CALC_OFFSET + X1_Y_REDUCE_RANGECHECK_OFFSET + REDUCED_OFFSET + i] - 
+                local_values[T2_CALC_OFFSET + MULTIPLY_B_X_OFFSET + i + 12]
+            );
+            if i == 0 {
+                yield_constr.constraint_first_row(
+                    local_values[T2_CALC_OFFSET + MULTIPLY_B_X0_B_MUL_OFFSET + Y_INPUT_OFFSET + i] - 
+                    FE::from_canonical_u32(4 as u32)
+                );
+            } else {
+                yield_constr.constraint_first_row(
+                    local_values[T2_CALC_OFFSET + MULTIPLY_B_X0_B_MUL_OFFSET + Y_INPUT_OFFSET + i]
+                );
+            }
+            if i == 0 {
+                yield_constr.constraint_first_row(
+                    local_values[T2_CALC_OFFSET + MULTIPLY_B_X1_B_MUL_OFFSET + Y_INPUT_OFFSET + i] - 
+                    FE::from_canonical_u32(4 as u32)
+                );
+            } else {
+                yield_constr.constraint_first_row(
+                    local_values[T2_CALC_OFFSET + MULTIPLY_B_X1_B_MUL_OFFSET + Y_INPUT_OFFSET + i]
+                );
+            }
+        }
+        add_multiply_by_b_constraints(local_values, next_values, yield_constr, T2_CALC_OFFSET);
+
+        // T3
+        for i in 0..12 {
+            yield_constr.constraint_first_row(
+                local_values[T3_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + i] - 
+                local_values[T2_CALC_OFFSET + MULTIPLY_B_Z0_OFFSET + REDUCED_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[T3_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + 12 + i] - 
+                local_values[T2_CALC_OFFSET + MULTIPLY_B_Z1_OFFSET + REDUCED_OFFSET + i]
+            );
+            if i == 0 {
+                yield_constr.constraint_first_row(
+                    local_values[T3_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET] - 
+                    FE::from_canonical_u32(3 as u32)
+                );
+            } else {
+                yield_constr.constraint_first_row(
+                    local_values[T3_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i]
+                );
+            }
+        }
+
+        add_fp2_fp_mul_constraints(local_values, next_values, yield_constr, T3_CALC_OFFSET);
+
+        // x1
+        for i in 0..24 {
+            yield_constr.constraint_first_row(
+                local_values[X1_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] - 
+                local_values[QY_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[X1_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] - 
+                local_values[QZ_OFFSET + i]
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, X1_CALC_OFFSET);
+
+        // T4
+        for i in 0..12 {
+            yield_constr.constraint_first_row(
+                local_values[T4_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + i] - 
+                local_values[X1_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[T4_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + 12 + i] - 
+                local_values[X1_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+            );
+            if i == 0 {
+                yield_constr.constraint_first_row(
+                    local_values[T4_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET] - 
+                    FE::from_canonical_u32(2 as u32)
+                );
+            } else {
+                yield_constr.constraint_first_row(
+                    local_values[T4_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i]
+                );
+            }
+        }
+
+        add_fp2_fp_mul_constraints(local_values, next_values, yield_constr, T4_CALC_OFFSET);
+
+        // x3
+        for i in 0..24 {
+            yield_constr.constraint_first_row(
+                local_values[X3_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] - 
+                local_values[QX_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[X3_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] - 
+                local_values[QX_OFFSET + i]
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, X3_CALC_OFFSET);
+
+        // x4
+        for i in 0..12 {
+            yield_constr.constraint_first_row(
+                local_values[X4_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + i] - 
+                local_values[X3_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+            );
+            yield_constr.constraint_first_row(
+                local_values[X4_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + 12 + i] - 
+                local_values[X3_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+            );
+            if i == 0 {
+                yield_constr.constraint_first_row(
+                    local_values[X4_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET] - 
+                    FE::from_canonical_u32(3 as u32)
+                );
+            } else {
+                yield_constr.constraint_first_row(
+                    local_values[X4_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i]
+                );
+            }
+        }
+
+        add_fp2_fp_mul_constraints(local_values, next_values, yield_constr, X4_CALC_OFFSET);
+
+        // x5
+        for i in 0..12 {
+            yield_constr.constraint_transition(
+                local_values[X5_CALC_OFFSET + FP2_ADDITION_CHECK_OFFSET] *
+                (
+                    local_values[T4_CALC_OFFSET + X0_Y_REDUCE_RANGECHECK_OFFSET + REDUCED_OFFSET + i] -
+                    local_values[X5_CALC_OFFSET + FP2_ADDITION_X_OFFSET + i]
+                )
+            );
+            yield_constr.constraint_transition(
+                local_values[X5_CALC_OFFSET + FP2_ADDITION_CHECK_OFFSET] *
+                (
+                    local_values[T4_CALC_OFFSET + X1_Y_REDUCE_RANGECHECK_OFFSET + REDUCED_OFFSET + i] -
+                    local_values[X5_CALC_OFFSET + FP2_ADDITION_X_OFFSET + i + 12]
+                )
+            );
+        }
+        add_negate_fp2_constraints(local_values, yield_constr, X5_CALC_OFFSET);
+        
+}
 
     type EvaluationFrameTarget =
         StarkFrame<ExtensionTarget<D>, ExtensionTarget<D>, COLUMNS, PUBLIC_INPUTS>;

@@ -246,6 +246,53 @@ pub fn get_div_rem_modulus_from_biguint_12(x: BigUint) -> ([u32; 12], [u32; 12])
     (get_u32_vec_from_literal(div), get_u32_vec_from_literal(rem))
 }
 
+pub fn calc_qs(x: Fp2, y: Fp2, z: Fp2) -> (Fp2, Fp2, Fp2) {
+    let ax = x * z.invert();
+    let ay = y * z.invert();
+
+    let Qx = ax.clone();
+    let Qy = ay.clone();
+    let Qz = Fp2::one(); 
+    println!("{:?}", (Qx, Qy, Qz));
+    (Qx, Qy, Qz)
+}
+
+pub fn calc_precomp_stuff_loop0(Rx: Fp2, Ry: Fp2, Rz: Fp2,
+    Qx: Fp2, Qy: Fp2, Qz: Fp2) -> Vec<Fp2> {
+    // runs 1 loop subpart 0
+    let t0 = Ry * Ry;
+    let t1 = Rz * Rz;
+    let x0 = t1.mul(Fp::get_fp_from_biguint(BigUint::from(3 as u32)));
+
+    let t2 = x0.multiply_by_B();
+    let t3 = t2.mul(Fp::get_fp_from_biguint(BigUint::from(3 as u32)));
+    let x1 = Ry * Rz;
+    let t4 = x1.mul(Fp::get_fp_from_biguint(BigUint::from(2 as u32)));
+    let x2 = t2-t0;
+    let x3 = Rx*Rx;
+    let x4 = x3.mul(Fp::get_fp_from_biguint(BigUint::from(3 as u32)));
+    let x5 = -t4;
+
+    let k = mod_inverse(BigUint::from(2 as u32), modulus());
+
+    let x6 = t0-t3;
+    let x7 = Rx*Ry;
+    let x8 = x6 * x7;
+
+    let x9 = t0 + t3;
+    let x10 = x9 * Fp::get_fp_from_biguint(k.clone());
+    let x11 = x10 * x10;
+
+    let x12 = t2 * t2;
+    let x13 = x12 * Fp::get_fp_from_biguint(BigUint::from(3 as u32));
+
+    let new_Rx = x8 * Fp::get_fp_from_biguint(k.clone());
+    let new_Ry = x11 - x13;
+    let new_Rz = t0 * t4;
+
+    vec![new_Rx, new_Ry, new_Rz, t0, t1, x0, t2, t3, x1, t4, x3, x2, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13]
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Fp(pub(crate) [u32; 12]);
 
@@ -444,6 +491,12 @@ impl Fp2 {
         [
             BigUint::new(self.0[0].0.to_vec()),
             BigUint::new(self.0[1].0.to_vec()),
+        ]
+    }
+
+    pub fn get_u32_slice(&self) -> [[u32;12]; 2] {
+        [
+            self.0[0].0,self.0[1].0
         ]
     }
 }
@@ -1109,6 +1162,10 @@ pub fn calc_pairing_precomp(x: Fp2, y: Fp2, z: Fp2) -> Vec<[Fp2; 3]> {
     let Qx = ax.clone();
     let Qy = ay.clone();
     let Qz = Fp2::one();
+
+    let (testx, testy, testz) = calc_qs(x, y, z);
+    println!("test1::{:?}", (testx, testy, testz));
+    println!("test2::{:?}", (Qx, Qy, Qz));
 
     let mut Rx = Qx.clone();
     let mut Ry = Qy.clone();
