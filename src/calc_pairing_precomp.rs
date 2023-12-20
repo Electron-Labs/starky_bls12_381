@@ -64,7 +64,8 @@ pub const REDUCTION_TOTAL: usize = REDUCED_OFFSET + 12;
 
 // Rangecheck offsets
 // whenever range check is used, start_col - 12 will contain the element being rangechecked
-pub const RANGE_CHECK_SUM_OFFSET: usize = 0;
+pub const RANGE_CHECK_SELECTOR_OFFSET: usize = 0;
+pub const RANGE_CHECK_SUM_OFFSET: usize = RANGE_CHECK_SELECTOR_OFFSET + 1;
 pub const RANGE_CHECK_SUM_CARRY_OFFSET: usize = RANGE_CHECK_SUM_OFFSET + 12;
 pub const RANGE_CHECK_BIT_DECOMP_OFFSET: usize = RANGE_CHECK_SUM_CARRY_OFFSET + 12;
 pub const RANGE_CHECK_TOTAL: usize = RANGE_CHECK_BIT_DECOMP_OFFSET + 32;
@@ -289,6 +290,7 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         let y = (BigUint::from(1u32) << 382) - modulus();
         let y_u32 = get_u32_vec_from_literal(y);
         let (x_y_sum, x_y_carry) = add_u32_slices_12(&x, &y_u32);
+        self.trace[row][start_col + RANGE_CHECK_SELECTOR_OFFSET] = F::ONE;
         self.assign_u32_in_series(row, start_col + RANGE_CHECK_SUM_OFFSET, &x_y_sum);
         self.assign_u32_in_series(row, start_col + RANGE_CHECK_SUM_CARRY_OFFSET, &x_y_carry);
         self.assign_u32_in_series(
@@ -913,29 +915,33 @@ pub fn add_range_check_constraints<
 
     for i in 0..12 {
         if i == 0 {
-            yield_constr.constraint_first_row(
-                local_values[start_col + RANGE_CHECK_SUM_OFFSET + i]
-                    + (local_values[start_col + RANGE_CHECK_SUM_CARRY_OFFSET + i]
-                        * FE::from_canonical_u64(1 << 32))
-                    - FE::from_canonical_u32(y_u32[i])
-                    - local_values[start_col - 12 + i],
-            )
+            yield_constr.constraint(
+                local_values[start_col + RANGE_CHECK_SELECTOR_OFFSET] * (
+                    local_values[start_col + RANGE_CHECK_SUM_OFFSET + i]
+                        + (local_values[start_col + RANGE_CHECK_SUM_CARRY_OFFSET + i]
+                            * FE::from_canonical_u64(1 << 32))
+                        - FE::from_canonical_u32(y_u32[i])
+                        - local_values[start_col - 12 + i]
+                )
+            );
         } else if i < 12 {
-            yield_constr.constraint_first_row(
-                local_values[start_col + RANGE_CHECK_SUM_OFFSET + i]
-                    + (local_values[start_col + RANGE_CHECK_SUM_CARRY_OFFSET + i]
-                        * FE::from_canonical_u64(1 << 32))
-                    - FE::from_canonical_u32(y_u32[i])
-                    - local_values[start_col - 12 + i]
-                    - local_values[start_col + RANGE_CHECK_SUM_CARRY_OFFSET + i - 1],
-            )
+            yield_constr.constraint(
+                local_values[start_col + RANGE_CHECK_SELECTOR_OFFSET] * (
+                    local_values[start_col + RANGE_CHECK_SUM_OFFSET + i]
+                        + (local_values[start_col + RANGE_CHECK_SUM_CARRY_OFFSET + i]
+                            * FE::from_canonical_u64(1 << 32))
+                        - FE::from_canonical_u32(y_u32[i])
+                        - local_values[start_col - 12 + i]
+                        - local_values[start_col + RANGE_CHECK_SUM_CARRY_OFFSET + i - 1]
+                )
+            );
         }
         let bit_col: usize = start_col + RANGE_CHECK_BIT_DECOMP_OFFSET;
         let val_reconstructed = bit_decomp_32!(local_values, bit_col, FE, P);
-        yield_constr.constraint_first_row(
-            val_reconstructed - local_values[start_col + RANGE_CHECK_SUM_OFFSET + 11],
+        yield_constr.constraint(
+            local_values[start_col + RANGE_CHECK_SELECTOR_OFFSET] * (val_reconstructed - local_values[start_col + RANGE_CHECK_SUM_OFFSET + 11])
         );
-        yield_constr.constraint_first_row(local_values[bit_col + 30]);
+        yield_constr.constraint(local_values[start_col + RANGE_CHECK_SELECTOR_OFFSET] * local_values[bit_col + 30]);
     }
 }
 
@@ -1788,7 +1794,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for PairingPrecom
     }
 
     fn constraint_degree(&self) -> usize {
-        2
+        3
     }
 }
 
