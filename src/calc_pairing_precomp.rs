@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use itertools::Itertools;
-use num_bigint::BigUint;
+use num_bigint::{BigUint, ToBigUint};
 use plonky2::{
     field::{
         extension::{Extendable, FieldExtension},
@@ -22,7 +22,7 @@ use starky::{
 use crate::native::{
     add_u32_slices, add_u32_slices_12, get_bits_as_array, get_div_rem_modulus_from_biguint_12,
     get_selector_bits_from_u32, get_u32_vec_from_literal, get_u32_vec_from_literal_24, modulus,
-    multiply_by_slice, sub_u32_slices, Fp, Fp2, calc_qs, calc_precomp_stuff_loop0,
+    multiply_by_slice, sub_u32_slices, Fp, Fp2, calc_qs, calc_precomp_stuff_loop0, sub_u32_slices_12, mul_u32_slice_u32,
 };
 
 
@@ -129,10 +129,43 @@ pub const FP_ADDITION_SUM_OFFSET: usize = FP_ADDITION_Y_OFFSET + 12;
 pub const FP_ADDITION_CARRY_OFFSET: usize = FP_ADDITION_SUM_OFFSET + 12;
 pub const FP_ADDITION_TOTAL: usize = FP_ADDITION_CARRY_OFFSET + 12;
 
+// Fp subtraction layout offsets
+pub const FP_SUBTRACTION_CHECK_OFFSET: usize = 0;
+pub const FP_SUBTRACTION_X_OFFSET: usize = FP_SUBTRACTION_CHECK_OFFSET + 1;
+pub const FP_SUBTRACTION_Y_OFFSET: usize = FP_SUBTRACTION_X_OFFSET + 12;
+pub const FP_SUBTRACTION_DIFF_OFFSET: usize = FP_SUBTRACTION_Y_OFFSET + 12;
+pub const FP_SUBTRACTION_BORROW_OFFSET: usize = FP_SUBTRACTION_DIFF_OFFSET + 12;
+pub const FP_SUBTRACTION_TOTAL: usize = FP_SUBTRACTION_BORROW_OFFSET + 12;
+
 // Fp2 addition layout offsets
 pub const FP2_ADDITION_0_OFFSET: usize = 0;
 pub const FP2_ADDITION_1_OFFSET: usize = FP2_ADDITION_0_OFFSET + FP_ADDITION_TOTAL;
 pub const FP2_ADDITION_TOTAL: usize = FP2_ADDITION_1_OFFSET + FP_ADDITION_TOTAL;
+
+// Fp2 subtraction layout offsets
+pub const FP2_SUBTRACTION_0_OFFSET: usize = 0;
+pub const FP2_SUBTRACTION_1_OFFSET: usize = FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_TOTAL;
+pub const FP2_SUBTRACTION_TOTAL: usize = FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_TOTAL;
+
+// Fp multiply single
+pub const FP_MULTIPLY_SINGLE_CHECK_OFFSET: usize = 0;
+pub const FP_MULTIPLY_SINGLE_X_OFFSET: usize = FP_MULTIPLY_SINGLE_CHECK_OFFSET + 1;
+pub const FP_MULTIPLY_SINGLE_Y_OFFSET: usize = FP_MULTIPLY_SINGLE_X_OFFSET + 12;
+pub const FP_MULTIPLY_SINGLE_SUM_OFFSET: usize = FP_MULTIPLY_SINGLE_Y_OFFSET + 1;
+pub const FP_MULTIPLY_SINGLE_CARRY_OFFSET: usize = FP_MULTIPLY_SINGLE_SUM_OFFSET + 12;
+pub const FP_MULTIPLY_SINGLE_TOTAL: usize = FP_MULTIPLY_SINGLE_CARRY_OFFSET + 12;
+
+// Fp2 multiply single
+pub const FP2_MULTIPLY_SINGLE_0_OFFSET: usize = 0;
+pub const FP2_MULTIPLY_SINGLE_1_OFFSET: usize = FP2_MULTIPLY_SINGLE_0_OFFSET + FP_MULTIPLY_SINGLE_TOTAL;
+pub const FP2_MULTIPLY_SINGLE_TOTAL: usize = FP2_MULTIPLY_SINGLE_1_OFFSET + FP_MULTIPLY_SINGLE_TOTAL;
+
+// Fp reduce rangecheck single
+pub const FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET: usize = 0;
+pub const FP_SINGLE_REDUCE_X_OFFSET: usize = FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET + FP_MULTIPLY_SINGLE_TOTAL;
+pub const FP_SINGLE_REDUCTION_ADDITION_OFFSET: usize = FP_SINGLE_REDUCE_X_OFFSET + 12;
+pub const FP_SINGLE_REDUCED_OFFSET: usize = FP_SINGLE_REDUCTION_ADDITION_OFFSET + FP_ADDITION_TOTAL;
+pub const FP_SINGLE_REDUCE_TOTAL: usize = FP_SINGLE_REDUCED_OFFSET + 12;
 
 pub const Z_MULT_Z_INV_OFFSET: usize = 0;
 pub const X_MULT_Z_INV_OFFSET: usize = Z_MULT_Z_INV_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
@@ -250,6 +283,54 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         self.fill_trace_addition_fp(x, &minus_x, row, start_col);
     }
 
+    pub fn fill_trace_subtraction_fp(
+        &mut self,
+        x: &[u32; 12],
+        y: &[u32; 12],
+        row: usize,
+        start_col: usize,
+    ) {
+        self.trace[row][start_col + FP_SUBTRACTION_CHECK_OFFSET] = F::ONE;
+        let (x_y_diff, x_y_borrow) = sub_u32_slices_12(&x, &y);
+        self.assign_u32_in_series(row, start_col + FP_SUBTRACTION_X_OFFSET, x);
+        self.assign_u32_in_series(row, start_col + FP_SUBTRACTION_Y_OFFSET, y);
+        self.assign_u32_in_series(row, start_col + FP_SUBTRACTION_DIFF_OFFSET, &x_y_diff);
+        self.assign_u32_in_series(row, start_col + FP_SUBTRACTION_BORROW_OFFSET, &x_y_borrow);
+    }
+
+    pub fn fill_trace_multiply_single_fp(
+        &mut self,
+        x: &[u32; 12],
+        y: u32,
+        row: usize,
+        start_col: usize,
+    ) {
+        self.trace[row][start_col + FP_MULTIPLY_SINGLE_CHECK_OFFSET] = F::ONE;
+        let (x_y_sum, x_y_carry) = mul_u32_slice_u32(x, y);
+        self.assign_u32_in_series(row, start_col + FP_MULTIPLY_SINGLE_X_OFFSET, x);
+        self.trace[row][start_col + FP_MULTIPLY_SINGLE_Y_OFFSET] = F::from_canonical_u32(y);
+        self.assign_u32_in_series(row, start_col + FP_MULTIPLY_SINGLE_SUM_OFFSET, &x_y_sum);
+        self.assign_u32_in_series(row, start_col + FP_MULTIPLY_SINGLE_CARRY_OFFSET, &x_y_carry);
+    }
+
+    pub fn fill_trace_reduce_single(
+        &mut self,
+        x: &[u32; 12],
+        row: usize,
+        start_col: usize,
+    ) -> [u32; 12] {
+        let (div, rem) = get_div_rem_modulus_from_biguint_12(BigUint::new(x.to_vec()));
+        println!("{:?}", div);
+        let div = div[0];
+        let modulus = get_u32_vec_from_literal(modulus());
+        self.fill_trace_multiply_single_fp(&modulus, div, row, start_col + FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET);
+        self.assign_u32_in_series(row, start_col + FP_SINGLE_REDUCE_X_OFFSET, x);
+        let div_x_mod = get_u32_vec_from_literal(div.to_biguint().unwrap() * BigUint::new(modulus.to_vec()));
+        self.assign_u32_in_series(row, start_col + FP_SINGLE_REDUCED_OFFSET, &rem);
+        self.fill_trace_addition_fp(&div_x_mod, &rem, row, start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET);
+        rem
+    }
+
     pub fn fill_trace_addition_fp2(
         &mut self,
         x: &[[u32; 12]; 2],
@@ -259,6 +340,28 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
     ) {
         self.fill_trace_addition_fp(&x[0], &y[0], row, start_col + FP2_ADDITION_0_OFFSET);
         self.fill_trace_addition_fp(&x[1], &y[1], row, start_col + FP2_ADDITION_1_OFFSET);
+    }
+
+    pub fn fill_trace_subtraction_fp2(
+        &mut self,
+        x: &[[u32; 12]; 2],
+        y: &[[u32; 12]; 2],
+        row: usize,
+        start_col: usize,
+    ) {
+        self.fill_trace_subtraction_fp(&x[0], &y[0], row, start_col + FP2_SUBTRACTION_0_OFFSET);
+        self.fill_trace_subtraction_fp(&x[1], &y[1], row, start_col + FP2_SUBTRACTION_1_OFFSET);
+    }
+
+    pub fn fill_trace_multiply_single_fp2(
+        &mut self,
+        x: &[[u32; 12]; 2],
+        y: &[u32; 2],
+        row: usize,
+        start_col: usize,
+    ) {
+        self.fill_trace_multiply_single_fp(&x[0], y[0], row, start_col + FP2_SUBTRACTION_0_OFFSET);
+        self.fill_trace_multiply_single_fp(&x[1], y[1], row, start_col + FP2_SUBTRACTION_1_OFFSET);
     }
 
     pub fn fill_trace_negate_fp2(
@@ -785,6 +888,44 @@ pub fn add_addition_fp_constraints<
     }
 }
 
+pub fn add_subtraction_fp_constraints<
+    F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize,
+>(
+    local_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize, // Starting column of your multiplication trace
+) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    for j in 0..12 {
+        if j == 0 {
+            yield_constr.constraint(
+                local_values[start_col + FP_SUBTRACTION_CHECK_OFFSET]
+                    * (local_values[start_col + FP_SUBTRACTION_DIFF_OFFSET + j]
+                        + local_values[start_col + FP_SUBTRACTION_Y_OFFSET + j]
+                        - (local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j]
+                            * FE::from_canonical_u64(1 << 32))
+                        - local_values[start_col + FP_SUBTRACTION_X_OFFSET + j]),
+            )
+        } else {
+            yield_constr.constraint(
+                local_values[start_col + FP_SUBTRACTION_CHECK_OFFSET]
+                    * (local_values[start_col + FP_SUBTRACTION_DIFF_OFFSET + j]
+                        + local_values[start_col + FP_SUBTRACTION_Y_OFFSET + j]
+                        + local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j - 1]
+                        - (local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j]
+                            * FE::from_canonical_u64(1 << 32))
+                        - local_values[start_col + FP_SUBTRACTION_X_OFFSET + j]),
+            )
+        }
+    }
+}
+
 pub fn add_negate_fp_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -810,6 +951,105 @@ pub fn add_negate_fp_constraints<
     }
 }
 
+pub fn add_fp_single_multiply_constraints<
+    F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize,
+    >(
+    local_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize, // Starting column of your multiplication trace
+    ) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    for j in 0..12 {
+        if j == 0 {
+            yield_constr.constraint(
+                local_values[start_col + FP_MULTIPLY_SINGLE_CHECK_OFFSET] *
+                (local_values[start_col + FP_MULTIPLY_SINGLE_SUM_OFFSET + j]
+                    + (local_values[start_col + FP_MULTIPLY_SINGLE_CARRY_OFFSET + j]
+                        * FE::from_canonical_u64(1 << 32))
+                    - local_values[start_col + FP_MULTIPLY_SINGLE_X_OFFSET + j]
+                    * local_values[start_col + FP_MULTIPLY_SINGLE_Y_OFFSET]),
+            )
+        } else {
+            yield_constr.constraint(
+                local_values[start_col + FP_MULTIPLY_SINGLE_CHECK_OFFSET] *
+                (local_values[start_col + FP_MULTIPLY_SINGLE_SUM_OFFSET + j]
+                    + (local_values[start_col + FP_MULTIPLY_SINGLE_CARRY_OFFSET + j]
+                        * FE::from_canonical_u64(1 << 32))
+                    - local_values[start_col + FP_MULTIPLY_SINGLE_X_OFFSET + j]
+                    * local_values[start_col + FP_MULTIPLY_SINGLE_Y_OFFSET]
+                    - local_values[start_col + FP_MULTIPLY_SINGLE_CARRY_OFFSET + j - 1]),
+            )
+        }
+    }
+}
+
+pub fn add_fp_reduce_single_constraints<
+    F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize,
+    >(
+    local_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize, // Starting column of your multiplication trace
+    ) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    let modulus = modulus();
+    let modulus_u32 = get_u32_vec_from_literal(modulus);
+    for i in 0..12 {
+        yield_constr.constraint_transition(
+            local_values[start_col + FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET + FP_MULTIPLY_SINGLE_CHECK_OFFSET] * (
+                local_values[start_col + FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET + FP_MULTIPLY_SINGLE_X_OFFSET + i] -
+                FE::from_canonical_u32(modulus_u32[i])
+            )
+        );
+    }
+
+    add_fp_single_multiply_constraints(local_values, yield_constr, start_col + FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET);
+
+    for i in 0..12 {
+        yield_constr.constraint_transition(
+            local_values[start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET + FP_ADDITION_CHECK_OFFSET]
+                * (local_values[start_col + FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET + FP_MULTIPLY_SINGLE_SUM_OFFSET + i]
+                    - local_values[start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET + FP_ADDITION_X_OFFSET + i]),
+        );
+    }
+
+    add_addition_fp_constraints(
+        local_values,
+        yield_constr,
+        start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET,
+    );
+
+    for i in 0..12 {
+        yield_constr.constraint_transition(
+            local_values[start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET + FP_ADDITION_CHECK_OFFSET]
+                * (local_values[start_col + FP_SINGLE_REDUCED_OFFSET + i]
+                    - local_values
+                        [start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET + FP_ADDITION_Y_OFFSET + i]),
+        );
+    }
+
+    for i in 0..12 {
+        yield_constr.constraint_transition(
+            local_values[start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET + FP_ADDITION_CHECK_OFFSET]
+                * (local_values[start_col + FP_SINGLE_REDUCE_X_OFFSET + i]
+                    - local_values
+                        [start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET + FP_ADDITION_SUM_OFFSET + i]),
+        )
+    }
+
+}
+
 pub fn add_addition_fp2_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -826,6 +1066,42 @@ pub fn add_addition_fp2_constraints<
 {
     add_addition_fp_constraints(local_values, yield_constr, start_col + FP2_ADDITION_0_OFFSET);
     add_addition_fp_constraints(local_values, yield_constr, start_col + FP2_ADDITION_1_OFFSET);
+}
+
+pub fn add_subtraction_fp2_constraints<
+    F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize,
+>(
+    local_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize, // Starting column of your multiplication trace
+) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    add_subtraction_fp_constraints(local_values, yield_constr, start_col + FP2_SUBTRACTION_0_OFFSET);
+    add_subtraction_fp_constraints(local_values, yield_constr, start_col + FP2_SUBTRACTION_1_OFFSET);
+}
+
+pub fn add_fp2_single_multiply_constraints<
+    F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize,
+>(
+    local_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize, // Starting column of your multiplication trace
+) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    add_fp_single_multiply_constraints(local_values, yield_constr, start_col + FP2_MULTIPLY_SINGLE_0_OFFSET);
+    add_fp_single_multiply_constraints(local_values, yield_constr, start_col + FP2_MULTIPLY_SINGLE_1_OFFSET);
 }
 
 pub fn add_negate_fp2_constraints<
