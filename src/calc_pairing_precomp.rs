@@ -129,10 +129,7 @@ pub const FP_ADDITION_CARRY_OFFSET: usize = FP_ADDITION_SUM_OFFSET + 12;
 pub const FP_ADDITION_TOTAL: usize = FP_ADDITION_CARRY_OFFSET + 12;
 
 // Fp2 addition layout offsets
-pub const FP2_ADDITION_CHECK_OFFSET: usize = 0;
-pub const FP2_ADDITION_X_OFFSET: usize = FP2_ADDITION_CHECK_OFFSET + 1;
-pub const FP2_ADDITION_Y_OFFSET: usize = FP2_ADDITION_X_OFFSET + 24;
-pub const FP2_ADDITION_0_OFFSET: usize = FP2_ADDITION_Y_OFFSET + 24;
+pub const FP2_ADDITION_0_OFFSET: usize = 0;
 pub const FP2_ADDITION_1_OFFSET: usize = FP2_ADDITION_0_OFFSET + FP_ADDITION_TOTAL;
 pub const FP2_ADDITION_TOTAL: usize = FP2_ADDITION_1_OFFSET + FP_ADDITION_TOTAL;
 
@@ -259,11 +256,6 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         row: usize,
         start_col: usize,
     ) {
-        self.trace[row][start_col + FP2_ADDITION_CHECK_OFFSET] = F::ONE;
-        self.assign_u32_in_series(row, start_col + FP2_ADDITION_X_OFFSET, &x[0]);
-        self.assign_u32_in_series(row, start_col + FP2_ADDITION_X_OFFSET + 12, &x[1]);
-        self.assign_u32_in_series(row, start_col + FP2_ADDITION_Y_OFFSET, &y[0]);
-        self.assign_u32_in_series(row, start_col + FP2_ADDITION_Y_OFFSET + 12, &y[1]);
         self.fill_trace_addition_fp(&x[0], &y[0], row, start_col + FP2_ADDITION_0_OFFSET);
         self.fill_trace_addition_fp(&x[1], &y[1], row, start_col + FP2_ADDITION_1_OFFSET);
     }
@@ -830,28 +822,6 @@ pub fn add_addition_fp2_constraints<
     FE: FieldExtension<D2, BaseField = F>,
     P: PackedField<Scalar = FE>,
 {
-    for i in 0..12 {
-        yield_constr.constraint(
-            local_values[start_col + FP2_ADDITION_CHECK_OFFSET] * (
-                local_values[start_col + FP2_ADDITION_X_OFFSET + i] - local_values[start_col + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i]
-            )
-        );
-        yield_constr.constraint(
-            local_values[start_col + FP2_ADDITION_CHECK_OFFSET] * (
-                local_values[start_col + FP2_ADDITION_Y_OFFSET + i] - local_values[start_col + FP2_ADDITION_0_OFFSET + FP_ADDITION_Y_OFFSET + i]
-            )
-        );
-        yield_constr.constraint(
-            local_values[start_col + FP2_ADDITION_CHECK_OFFSET] * (
-                local_values[start_col + FP2_ADDITION_X_OFFSET + i + 12] - local_values[start_col + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i]
-            )
-        );
-        yield_constr.constraint(
-            local_values[start_col + FP2_ADDITION_CHECK_OFFSET] * (
-                local_values[start_col + FP2_ADDITION_Y_OFFSET + i + 12] - local_values[start_col + FP2_ADDITION_1_OFFSET + FP_ADDITION_Y_OFFSET + i]
-            )
-        );
-    }
     add_addition_fp_constraints(local_values, yield_constr, start_col + FP2_ADDITION_0_OFFSET);
     add_addition_fp_constraints(local_values, yield_constr, start_col + FP2_ADDITION_1_OFFSET);
 }
@@ -874,12 +844,12 @@ pub fn add_negate_fp2_constraints<
     let mod_u32 = get_u32_vec_from_literal(modulus());
     for i in 0..12 {
         yield_constr.constraint(
-            local_values[start_col + FP2_ADDITION_CHECK_OFFSET] * (
+            local_values[start_col + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
                 local_values[start_col + FP2_ADDITION_0_OFFSET + FP_ADDITION_SUM_OFFSET + i] - FE::from_canonical_u32(mod_u32[i])
             )
         );
         yield_constr.constraint(
-            local_values[start_col + FP2_ADDITION_CHECK_OFFSET] * (
+            local_values[start_col + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
                 local_values[start_col + FP2_ADDITION_1_OFFSET + FP_ADDITION_SUM_OFFSET + i] - FE::from_canonical_u32(mod_u32[i])
             )
         );
@@ -1787,17 +1757,17 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for PairingPrecom
         // x5
         for i in 0..12 {
             yield_constr.constraint_transition(
-                local_values[X5_CALC_OFFSET + FP2_ADDITION_CHECK_OFFSET] *
+                local_values[X5_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET] *
                 (
                     local_values[T4_CALC_OFFSET + X0_Y_REDUCE_OFFSET + REDUCED_OFFSET + i] -
-                    local_values[X5_CALC_OFFSET + FP2_ADDITION_X_OFFSET + i]
+                    local_values[X5_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i]
                 )
             );
             yield_constr.constraint_transition(
-                local_values[X5_CALC_OFFSET + FP2_ADDITION_CHECK_OFFSET] *
+                local_values[X5_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET] *
                 (
                     local_values[T4_CALC_OFFSET + X1_Y_REDUCE_OFFSET + REDUCED_OFFSET + i] -
-                    local_values[X5_CALC_OFFSET + FP2_ADDITION_X_OFFSET + i + 12]
+                    local_values[X5_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i]
                 )
             );
         }
