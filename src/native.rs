@@ -137,6 +137,20 @@ pub fn sub_u32_slices_12(x: &[u32; 12], y: &[u32; 12]) -> ([u32; 12], [u32; 12])
     (res, borrows)
 }
 
+pub fn mul_u32_slice_u32(x: &[u32; 12], y: u32) -> ([u32; 12], [u32; 12]) {
+    let mut prev_carry = 0u32;
+    let mut res = [0u32; 12];
+    let mut carries = [0u32; 12];
+    for i in 0..12 {
+        let tmp = x[i] as u64 * y as u64 + prev_carry as u64;
+        res[i] = tmp as u32;
+        carries[i] = (tmp >> 32) as u32;
+        prev_carry = carries[i];
+    }
+    assert_eq!(prev_carry, 0);
+    (res, carries)
+}
+
 pub fn get_bits_as_array(number: u32) -> [u32; 32] {
     let mut result = [0u32; 32]; // Assuming a u32 has 32 bits
 

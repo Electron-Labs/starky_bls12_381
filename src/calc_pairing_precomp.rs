@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use itertools::Itertools;
-use num_bigint::BigUint;
+use num_bigint::{BigUint, ToBigUint};
 use plonky2::{
     field::{
         extension::{Extendable, FieldExtension},
@@ -22,7 +22,7 @@ use starky::{
 use crate::native::{
     add_u32_slices, add_u32_slices_12, get_bits_as_array, get_div_rem_modulus_from_biguint_12,
     get_selector_bits_from_u32, get_u32_vec_from_literal, get_u32_vec_from_literal_24, modulus,
-    multiply_by_slice, sub_u32_slices, Fp, Fp2, calc_qs, calc_precomp_stuff_loop0,
+    multiply_by_slice, sub_u32_slices, Fp, Fp2, calc_qs, calc_precomp_stuff_loop0, sub_u32_slices_12, mul_u32_slice_u32,
 };
 
 
@@ -58,13 +58,17 @@ pub const SUBTRACTION_TOTAL: usize = SUBTRACTION_BORROW_OFFSET + 24;
 // Reduce and rangecheck layout offsets
 pub const REDUCE_MULTIPLICATION_OFFSET: usize = 0;
 pub const REDUCE_X_OFFSET: usize = REDUCE_MULTIPLICATION_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
-pub const REDUCED_OFFSET: usize = REDUCE_X_OFFSET + 24;
-pub const REDUCTION_ADDITION_OFFSET: usize = REDUCED_OFFSET + 12;
+pub const REDUCTION_ADDITION_OFFSET: usize = REDUCE_X_OFFSET + 24;
+pub const REDUCED_OFFSET: usize = REDUCTION_ADDITION_OFFSET + ADDITION_TOTAL;
+pub const REDUCTION_TOTAL: usize = REDUCED_OFFSET + 12;
 
-pub const RANGE_CHECK_SUM_OFFSET: usize = REDUCTION_ADDITION_OFFSET + ADDITION_TOTAL;
+// Rangecheck offsets
+// whenever range check is used, start_col - 12 will contain the element being rangechecked
+pub const RANGE_CHECK_SELECTOR_OFFSET: usize = 0;
+pub const RANGE_CHECK_SUM_OFFSET: usize = RANGE_CHECK_SELECTOR_OFFSET + 1;
 pub const RANGE_CHECK_SUM_CARRY_OFFSET: usize = RANGE_CHECK_SUM_OFFSET + 12;
 pub const RANGE_CHECK_BIT_DECOMP_OFFSET: usize = RANGE_CHECK_SUM_CARRY_OFFSET + 12;
-pub const REDUCE_RANGE_CHECK_TOTAL: usize = RANGE_CHECK_BIT_DECOMP_OFFSET + 32;
+pub const RANGE_CHECK_TOTAL: usize = RANGE_CHECK_BIT_DECOMP_OFFSET + 32;
 
 // Fp2 Multiplication layout offsets
 pub const FP2_FP2_SELECTOR_OFFSET: usize = 0;
@@ -78,26 +82,30 @@ pub const Z1_ADD_MODULUS_OFFSET: usize =
     X_1_Y_1_MULTIPLICATION_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
 pub const Z1_SUBTRACTION_OFFSET: usize = Z1_ADD_MODULUS_OFFSET + ADDITION_TOTAL;
 pub const Z1_REDUCE_OFFSET: usize = Z1_SUBTRACTION_OFFSET + SUBTRACTION_TOTAL;
+pub const Z1_RANGECHECK_OFFSET: usize = Z1_REDUCE_OFFSET + REDUCTION_TOTAL;
 
-pub const X_0_Y_1_MULTIPLICATION_OFFSET: usize = Z1_REDUCE_OFFSET + REDUCE_RANGE_CHECK_TOTAL;
+pub const X_0_Y_1_MULTIPLICATION_OFFSET: usize = Z1_RANGECHECK_OFFSET + RANGE_CHECK_TOTAL;
 pub const X_1_Y_0_MULTIPLICATION_OFFSET: usize =
     X_0_Y_1_MULTIPLICATION_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
 
 pub const Z2_ADDITION_OFFSET: usize =
     X_1_Y_0_MULTIPLICATION_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
 pub const Z2_REDUCE_OFFSET: usize = Z2_ADDITION_OFFSET + ADDITION_TOTAL;
+pub const Z2_RANGECHECK_OFFSET: usize = Z2_REDUCE_OFFSET + REDUCTION_TOTAL;
 
-pub const TOTAL_COLUMNS_FP2_MULTIPLICATION: usize = Z2_REDUCE_OFFSET + REDUCE_RANGE_CHECK_TOTAL;
+pub const TOTAL_COLUMNS_FP2_MULTIPLICATION: usize = Z2_RANGECHECK_OFFSET + RANGE_CHECK_TOTAL;
 
 // Fp2 * Fp multiplication layout offsets
 pub const FP2_FP_MUL_SELECTOR_OFFSET: usize = 0;
 pub const FP2_FP_X_INPUT_OFFSET: usize = FP2_FP_MUL_SELECTOR_OFFSET + 1;
 pub const FP2_FP_Y_INPUT_OFFSET: usize = FP2_FP_X_INPUT_OFFSET + 24;
 pub const X0_Y_MULTIPLICATION_OFFSET:  usize = FP2_FP_Y_INPUT_OFFSET + 12;
-pub const X0_Y_REDUCE_RANGECHECK_OFFSET: usize = X0_Y_MULTIPLICATION_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
-pub const X1_Y_MULTIPLICATION_OFFSET:  usize = X0_Y_REDUCE_RANGECHECK_OFFSET + REDUCE_RANGE_CHECK_TOTAL;
-pub const X1_Y_REDUCE_RANGECHECK_OFFSET: usize = X1_Y_MULTIPLICATION_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
-pub const FP2_FP_TOTAL_COLUMNS: usize = X1_Y_REDUCE_RANGECHECK_OFFSET + REDUCE_RANGE_CHECK_TOTAL;
+pub const X0_Y_REDUCE_OFFSET: usize = X0_Y_MULTIPLICATION_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
+pub const X0_Y_RANGECHECK_OFFSET: usize = X0_Y_REDUCE_OFFSET + REDUCTION_TOTAL;
+pub const X1_Y_MULTIPLICATION_OFFSET:  usize = X0_Y_RANGECHECK_OFFSET + RANGE_CHECK_TOTAL;
+pub const X1_Y_REDUCE_OFFSET: usize = X1_Y_MULTIPLICATION_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
+pub const X1_Y_RANGECHECK_OFFSET: usize = X1_Y_REDUCE_OFFSET + REDUCTION_TOTAL;
+pub const FP2_FP_TOTAL_COLUMNS: usize = X1_Y_RANGECHECK_OFFSET + RANGE_CHECK_TOTAL;
 
 // Multiply by B layout offsets
 pub const MULTIPLY_B_SELECTOR_OFFSET: usize = 0;
@@ -106,10 +114,12 @@ pub const MULTIPLY_B_X0_B_MUL_OFFSET: usize = MULTIPLY_B_X_OFFSET + 24;
 pub const MULTIPLY_B_X1_B_MUL_OFFSET: usize = MULTIPLY_B_X0_B_MUL_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
 pub const MULTIPLY_B_ADD_MODSQ_OFFSET: usize = MULTIPLY_B_X1_B_MUL_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
 pub const MULTIPLY_B_SUB_OFFSET: usize = MULTIPLY_B_ADD_MODSQ_OFFSET + ADDITION_TOTAL;
-pub const MULTIPLY_B_Z0_OFFSET: usize = MULTIPLY_B_SUB_OFFSET + SUBTRACTION_TOTAL;
-pub const MULTIPLY_B_ADD_OFFSET: usize = MULTIPLY_B_Z0_OFFSET + REDUCE_RANGE_CHECK_TOTAL;
-pub const MULTIPLY_B_Z1_OFFSET: usize = MULTIPLY_B_ADD_OFFSET + ADDITION_TOTAL;
-pub const MULTIPLY_B_TOTAL_COLUMS: usize = MULTIPLY_B_Z1_OFFSET + REDUCE_RANGE_CHECK_TOTAL;
+pub const MULTIPLY_B_Z0_REDUCE_OFFSET: usize = MULTIPLY_B_SUB_OFFSET + SUBTRACTION_TOTAL;
+pub const MULTIPLY_B_Z0_RANGECHECK_OFFSET: usize = MULTIPLY_B_Z0_REDUCE_OFFSET + REDUCTION_TOTAL;
+pub const MULTIPLY_B_ADD_OFFSET: usize = MULTIPLY_B_Z0_RANGECHECK_OFFSET + RANGE_CHECK_TOTAL;
+pub const MULTIPLY_B_Z1_REDUCE_OFFSET: usize = MULTIPLY_B_ADD_OFFSET + ADDITION_TOTAL;
+pub const MULTIPLY_B_Z1_RANGECHECK_OFFSET: usize = MULTIPLY_B_Z1_REDUCE_OFFSET + REDUCTION_TOTAL;
+pub const MULTIPLY_B_TOTAL_COLUMS: usize = MULTIPLY_B_Z1_RANGECHECK_OFFSET + RANGE_CHECK_TOTAL;
 
 // Fp addition layout offsets
 pub const FP_ADDITION_CHECK_OFFSET: usize = 0;
@@ -119,13 +129,43 @@ pub const FP_ADDITION_SUM_OFFSET: usize = FP_ADDITION_Y_OFFSET + 12;
 pub const FP_ADDITION_CARRY_OFFSET: usize = FP_ADDITION_SUM_OFFSET + 12;
 pub const FP_ADDITION_TOTAL: usize = FP_ADDITION_CARRY_OFFSET + 12;
 
+// Fp subtraction layout offsets
+pub const FP_SUBTRACTION_CHECK_OFFSET: usize = 0;
+pub const FP_SUBTRACTION_X_OFFSET: usize = FP_SUBTRACTION_CHECK_OFFSET + 1;
+pub const FP_SUBTRACTION_Y_OFFSET: usize = FP_SUBTRACTION_X_OFFSET + 12;
+pub const FP_SUBTRACTION_DIFF_OFFSET: usize = FP_SUBTRACTION_Y_OFFSET + 12;
+pub const FP_SUBTRACTION_BORROW_OFFSET: usize = FP_SUBTRACTION_DIFF_OFFSET + 12;
+pub const FP_SUBTRACTION_TOTAL: usize = FP_SUBTRACTION_BORROW_OFFSET + 12;
+
 // Fp2 addition layout offsets
-pub const FP2_ADDITION_CHECK_OFFSET: usize = 0;
-pub const FP2_ADDITION_X_OFFSET: usize = FP2_ADDITION_CHECK_OFFSET + 1;
-pub const FP2_ADDITION_Y_OFFSET: usize = FP2_ADDITION_X_OFFSET + 24;
-pub const FP2_ADDITION_0_OFFSET: usize = FP2_ADDITION_Y_OFFSET + 24;
+pub const FP2_ADDITION_0_OFFSET: usize = 0;
 pub const FP2_ADDITION_1_OFFSET: usize = FP2_ADDITION_0_OFFSET + FP_ADDITION_TOTAL;
 pub const FP2_ADDITION_TOTAL: usize = FP2_ADDITION_1_OFFSET + FP_ADDITION_TOTAL;
+
+// Fp2 subtraction layout offsets
+pub const FP2_SUBTRACTION_0_OFFSET: usize = 0;
+pub const FP2_SUBTRACTION_1_OFFSET: usize = FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_TOTAL;
+pub const FP2_SUBTRACTION_TOTAL: usize = FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_TOTAL;
+
+// Fp multiply single
+pub const FP_MULTIPLY_SINGLE_CHECK_OFFSET: usize = 0;
+pub const FP_MULTIPLY_SINGLE_X_OFFSET: usize = FP_MULTIPLY_SINGLE_CHECK_OFFSET + 1;
+pub const FP_MULTIPLY_SINGLE_Y_OFFSET: usize = FP_MULTIPLY_SINGLE_X_OFFSET + 12;
+pub const FP_MULTIPLY_SINGLE_SUM_OFFSET: usize = FP_MULTIPLY_SINGLE_Y_OFFSET + 1;
+pub const FP_MULTIPLY_SINGLE_CARRY_OFFSET: usize = FP_MULTIPLY_SINGLE_SUM_OFFSET + 12;
+pub const FP_MULTIPLY_SINGLE_TOTAL: usize = FP_MULTIPLY_SINGLE_CARRY_OFFSET + 12;
+
+// Fp2 multiply single
+pub const FP2_MULTIPLY_SINGLE_0_OFFSET: usize = 0;
+pub const FP2_MULTIPLY_SINGLE_1_OFFSET: usize = FP2_MULTIPLY_SINGLE_0_OFFSET + FP_MULTIPLY_SINGLE_TOTAL;
+pub const FP2_MULTIPLY_SINGLE_TOTAL: usize = FP2_MULTIPLY_SINGLE_1_OFFSET + FP_MULTIPLY_SINGLE_TOTAL;
+
+// Fp reduce rangecheck single
+pub const FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET: usize = 0;
+pub const FP_SINGLE_REDUCE_X_OFFSET: usize = FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET + FP_MULTIPLY_SINGLE_TOTAL;
+pub const FP_SINGLE_REDUCTION_ADDITION_OFFSET: usize = FP_SINGLE_REDUCE_X_OFFSET + 12;
+pub const FP_SINGLE_REDUCED_OFFSET: usize = FP_SINGLE_REDUCTION_ADDITION_OFFSET + FP_ADDITION_TOTAL;
+pub const FP_SINGLE_REDUCE_TOTAL: usize = FP_SINGLE_REDUCED_OFFSET + 12;
 
 pub const Z_MULT_Z_INV_OFFSET: usize = 0;
 pub const X_MULT_Z_INV_OFFSET: usize = Z_MULT_Z_INV_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
@@ -143,7 +183,8 @@ pub const T2_CALC_OFFSET: usize = X0_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
 pub const T3_CALC_OFFSET: usize = T2_CALC_OFFSET + MULTIPLY_B_TOTAL_COLUMS;
 pub const X1_CALC_OFFSET: usize = T3_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
 pub const T4_CALC_OFFSET: usize = X1_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
-pub const X3_CALC_OFFSET: usize = T4_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
+pub const X2_CALC_OFFSET: usize = T4_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
+pub const X3_CALC_OFFSET: usize = X2_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL) * 2;
 pub const X4_CALC_OFFSET: usize = X3_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
 pub const X5_CALC_OFFSET: usize = X4_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
 pub const TOTAL_COLUMNS: usize = X5_CALC_OFFSET + FP2_ADDITION_TOTAL;
@@ -243,6 +284,53 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         self.fill_trace_addition_fp(x, &minus_x, row, start_col);
     }
 
+    pub fn fill_trace_subtraction_fp(
+        &mut self,
+        x: &[u32; 12],
+        y: &[u32; 12],
+        row: usize,
+        start_col: usize,
+    ) {
+        self.trace[row][start_col + FP_SUBTRACTION_CHECK_OFFSET] = F::ONE;
+        let (x_y_diff, x_y_borrow) = sub_u32_slices_12(&x, &y);
+        self.assign_u32_in_series(row, start_col + FP_SUBTRACTION_X_OFFSET, x);
+        self.assign_u32_in_series(row, start_col + FP_SUBTRACTION_Y_OFFSET, y);
+        self.assign_u32_in_series(row, start_col + FP_SUBTRACTION_DIFF_OFFSET, &x_y_diff);
+        self.assign_u32_in_series(row, start_col + FP_SUBTRACTION_BORROW_OFFSET, &x_y_borrow);
+    }
+
+    pub fn fill_trace_multiply_single_fp(
+        &mut self,
+        x: &[u32; 12],
+        y: u32,
+        row: usize,
+        start_col: usize,
+    ) {
+        self.trace[row][start_col + FP_MULTIPLY_SINGLE_CHECK_OFFSET] = F::ONE;
+        let (x_y_sum, x_y_carry) = mul_u32_slice_u32(x, y);
+        self.assign_u32_in_series(row, start_col + FP_MULTIPLY_SINGLE_X_OFFSET, x);
+        self.trace[row][start_col + FP_MULTIPLY_SINGLE_Y_OFFSET] = F::from_canonical_u32(y);
+        self.assign_u32_in_series(row, start_col + FP_MULTIPLY_SINGLE_SUM_OFFSET, &x_y_sum);
+        self.assign_u32_in_series(row, start_col + FP_MULTIPLY_SINGLE_CARRY_OFFSET, &x_y_carry);
+    }
+
+    pub fn fill_trace_reduce_single(
+        &mut self,
+        x: &[u32; 12],
+        row: usize,
+        start_col: usize,
+    ) -> [u32; 12] {
+        let (div, rem) = get_div_rem_modulus_from_biguint_12(BigUint::new(x.to_vec()));
+        let div = div[0];
+        let modulus = get_u32_vec_from_literal(modulus());
+        self.fill_trace_multiply_single_fp(&modulus, div, row, start_col + FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET);
+        self.assign_u32_in_series(row, start_col + FP_SINGLE_REDUCE_X_OFFSET, x);
+        let div_x_mod = get_u32_vec_from_literal(div.to_biguint().unwrap() * BigUint::new(modulus.to_vec()));
+        self.assign_u32_in_series(row, start_col + FP_SINGLE_REDUCED_OFFSET, &rem);
+        self.fill_trace_addition_fp(&div_x_mod, &rem, row, start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET);
+        rem
+    }
+
     pub fn fill_trace_addition_fp2(
         &mut self,
         x: &[[u32; 12]; 2],
@@ -250,13 +338,30 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         row: usize,
         start_col: usize,
     ) {
-        self.trace[row][start_col + FP2_ADDITION_CHECK_OFFSET] = F::ONE;
-        self.assign_u32_in_series(row, start_col + FP2_ADDITION_X_OFFSET, &x[0]);
-        self.assign_u32_in_series(row, start_col + FP2_ADDITION_X_OFFSET + 12, &x[1]);
-        self.assign_u32_in_series(row, start_col + FP2_ADDITION_Y_OFFSET, &y[0]);
-        self.assign_u32_in_series(row, start_col + FP2_ADDITION_Y_OFFSET + 12, &y[1]);
         self.fill_trace_addition_fp(&x[0], &y[0], row, start_col + FP2_ADDITION_0_OFFSET);
         self.fill_trace_addition_fp(&x[1], &y[1], row, start_col + FP2_ADDITION_1_OFFSET);
+    }
+
+    pub fn fill_trace_subtraction_fp2(
+        &mut self,
+        x: &[[u32; 12]; 2],
+        y: &[[u32; 12]; 2],
+        row: usize,
+        start_col: usize,
+    ) {
+        self.fill_trace_subtraction_fp(&x[0], &y[0], row, start_col + FP2_SUBTRACTION_0_OFFSET);
+        self.fill_trace_subtraction_fp(&x[1], &y[1], row, start_col + FP2_SUBTRACTION_1_OFFSET);
+    }
+
+    pub fn fill_trace_multiply_single_fp2(
+        &mut self,
+        x: &[[u32; 12]; 2],
+        y: &[u32; 2],
+        row: usize,
+        start_col: usize,
+    ) {
+        self.fill_trace_multiply_single_fp(&x[0], y[0], row, start_col + FP2_SUBTRACTION_0_OFFSET);
+        self.fill_trace_multiply_single_fp(&x[1], y[1], row, start_col + FP2_SUBTRACTION_1_OFFSET);
     }
 
     pub fn fill_trace_negate_fp2(
@@ -288,6 +393,7 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         let y = (BigUint::from(1u32) << 382) - modulus();
         let y_u32 = get_u32_vec_from_literal(y);
         let (x_y_sum, x_y_carry) = add_u32_slices_12(&x, &y_u32);
+        self.trace[row][start_col + RANGE_CHECK_SELECTOR_OFFSET] = F::ONE;
         self.assign_u32_in_series(row, start_col + RANGE_CHECK_SUM_OFFSET, &x_y_sum);
         self.assign_u32_in_series(row, start_col + RANGE_CHECK_SUM_CARRY_OFFSET, &x_y_carry);
         self.assign_u32_in_series(
@@ -350,13 +456,13 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         }
     }
 
-    fn fill_reduction_and_range_check_trace(
+    fn fill_reduction_trace(
         &mut self,
         x: &[u32; 24],
         start_row: usize,
         end_row: usize,
         start_col: usize,
-    ) {
+    ) -> [u32; 12] {
         let (div, rem) = get_div_rem_modulus_from_biguint_12(BigUint::new(x.to_vec()));
         let modulus = get_u32_vec_from_literal(modulus());
         self.fill_multiplication_trace_no_mod_reduction(
@@ -388,8 +494,8 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
             start_col + REDUCTION_ADDITION_OFFSET,
         );
         println!("rem {:?}", rem_24);
+        rem
 
-        self.fill_range_check_trace(&rem, start_row, start_col);
     }
 
 
@@ -434,7 +540,8 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         let x0y0_x1y1 = get_u32_vec_from_literal_24(
             BigUint::new(x0y0_add_modsq.to_vec()) - BigUint::new(x1y1.to_vec()),
         );
-        self.fill_reduction_and_range_check_trace(&x0y0_x1y1, start_row, end_row, start_col + Z1_REDUCE_OFFSET);
+        let rem = self.fill_reduction_trace(&x0y0_x1y1, start_row, end_row, start_col + Z1_REDUCE_OFFSET);
+        self.fill_range_check_trace(&rem, start_row, start_col + Z1_RANGECHECK_OFFSET);
 
         // filling trace for X0*Y1 + X1*Y0
         self.fill_multiplication_trace_no_mod_reduction(
@@ -460,7 +567,8 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
 
         let x0y1_x1y0 =
             get_u32_vec_from_literal_24(BigUint::new(x0y1.to_vec()) + BigUint::new(x1y0.to_vec()));
-        self.fill_reduction_and_range_check_trace(&x0y1_x1y0, start_row, end_row, start_col + Z2_REDUCE_OFFSET);
+        let rem = self.fill_reduction_trace(&x0y1_x1y0, start_row, end_row, start_col + Z2_REDUCE_OFFSET);
+        self.fill_range_check_trace(&rem, start_row, start_col + Z2_RANGECHECK_OFFSET);
     }
 
     pub fn fill_trace_fp2_fp_mul(&mut self, x: &[[u32; 12]; 2], y: &[u32; 12], start_row: usize, end_row: usize, start_col: usize) {
@@ -473,10 +581,12 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         self.trace[end_row][start_col + FP2_FP_MUL_SELECTOR_OFFSET] = F::ZERO;
         self.fill_multiplication_trace_no_mod_reduction(&x[0], y, start_row, end_row, start_col + X0_Y_MULTIPLICATION_OFFSET);
         let x0y = get_u32_vec_from_literal_24(BigUint::new(x[0].to_vec()) * BigUint::new(y.to_vec()));
-        self.fill_reduction_and_range_check_trace(&x0y, start_row, end_row, start_col + X0_Y_REDUCE_RANGECHECK_OFFSET);
+        let rem = self.fill_reduction_trace(&x0y, start_row, end_row, start_col + X0_Y_REDUCE_OFFSET);
+        self.fill_range_check_trace(&rem, start_row, start_col + X0_Y_RANGECHECK_OFFSET);
         self.fill_multiplication_trace_no_mod_reduction(&x[1], y, start_row, end_row, start_col + X1_Y_MULTIPLICATION_OFFSET);
         let x1y = get_u32_vec_from_literal_24(BigUint::new(x[1].to_vec()) * BigUint::new(y.to_vec()));
-        self.fill_reduction_and_range_check_trace(&x1y, start_row, end_row, start_col + X1_Y_REDUCE_RANGECHECK_OFFSET);
+        let rem = self.fill_reduction_trace(&x1y, start_row, end_row, start_col + X1_Y_REDUCE_OFFSET);
+        self.fill_range_check_trace(&rem, start_row, start_col + X1_Y_RANGECHECK_OFFSET);
     }
 
     pub fn fill_multiply_by_b_trace(&mut self, x: &[[u32; 12]; 2], start_row: usize, end_row: usize, start_col: usize) {
@@ -500,13 +610,38 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         let x0y_x1y = get_u32_vec_from_literal_24(
             BigUint::new(x0y_add_modsq.to_vec()) - BigUint::new(x1y.to_vec()),
         );
-        self.fill_reduction_and_range_check_trace(&x0y_x1y, start_row, end_row, start_col + MULTIPLY_B_Z0_OFFSET);
+        let rem = self.fill_reduction_trace(&x0y_x1y, start_row, end_row, start_col + MULTIPLY_B_Z0_REDUCE_OFFSET);
+        self.fill_range_check_trace(&rem, start_row, start_col + MULTIPLY_B_Z0_RANGECHECK_OFFSET);
+
 
         self.fill_addition_trace(&x0y, &x1y, start_row + 11, start_col + MULTIPLY_B_ADD_OFFSET);
         let x0y_x1y = get_u32_vec_from_literal_24(
             BigUint::new(x0y.to_vec()) + BigUint::new(x1y.to_vec()),
         );
-        self.fill_reduction_and_range_check_trace(&x0y_x1y, start_row, end_row, start_col + MULTIPLY_B_Z1_OFFSET);
+        let rem = self.fill_reduction_trace(&x0y_x1y, start_row, end_row, start_col + MULTIPLY_B_Z1_REDUCE_OFFSET);
+        self.fill_range_check_trace(&rem, start_row, start_col + MULTIPLY_B_Z1_RANGECHECK_OFFSET);
+    }
+
+    pub fn fill_trace_subtraction_with_reduction(&mut self, x: &[[u32; 12]; 2], y: &[[u32; 12]; 2], row: usize, start_col: usize) {
+        let modulus = get_u32_vec_from_literal(modulus());
+        self.fill_trace_addition_fp2(x, &[modulus, modulus], row, start_col);
+        let x0_modulus = get_u32_vec_from_literal(
+            BigUint::new(x[0].to_vec()) + BigUint::new(modulus.to_vec())
+        );
+        let x1_modulus = get_u32_vec_from_literal(
+            BigUint::new(x[1].to_vec()) + BigUint::new(modulus.to_vec())
+        );
+        self.fill_trace_subtraction_fp2(&[x0_modulus, x1_modulus], y, row, start_col + FP2_ADDITION_TOTAL);
+        let x0_y0 = get_u32_vec_from_literal(
+            BigUint::new(x0_modulus.to_vec()) - BigUint::new(y[0].to_vec())
+        );
+        let x1_y1 = get_u32_vec_from_literal(
+            BigUint::new(x1_modulus.to_vec()) - BigUint::new(y[1].to_vec())
+        );
+        let rem = self.fill_trace_reduce_single(&x0_y0, row, start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL);
+        self.fill_range_check_trace(&rem, row, start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL);
+        let rem = self.fill_trace_reduce_single(&x1_y1, row, start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL);
+        self.fill_range_check_trace(&rem, row, start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL*2 + RANGE_CHECK_TOTAL);
     }
 
     pub fn generate_trace(&mut self, x: [[u32; 12]; 2], y: [[u32; 12]; 2], z:[[u32; 12]; 2]) {
@@ -562,7 +697,8 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         self.generate_trace_fp2_mul(Ry.get_u32_slice(), Rz.get_u32_slice(), 0, 15, X1_CALC_OFFSET);
         // t4
         self.fill_trace_fp2_fp_mul(&values_0[8].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("2").unwrap()).0, 0, 15, T4_CALC_OFFSET);
-        // TODO x2 subtraction implement
+        // x2
+        self.fill_trace_subtraction_with_reduction(&values_0[6].get_u32_slice(), &values_0[3].get_u32_slice(), 11, X2_CALC_OFFSET);
         // x3
         self.generate_trace_fp2_mul(Rx.get_u32_slice(), Rx.get_u32_slice(), 0, 15, X3_CALC_OFFSET);
         // x4
@@ -775,6 +911,44 @@ pub fn add_addition_fp_constraints<
     }
 }
 
+pub fn add_subtraction_fp_constraints<
+    F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize,
+>(
+    local_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize, // Starting column of your multiplication trace
+) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    for j in 0..12 {
+        if j == 0 {
+            yield_constr.constraint(
+                local_values[start_col + FP_SUBTRACTION_CHECK_OFFSET]
+                    * (local_values[start_col + FP_SUBTRACTION_DIFF_OFFSET + j]
+                        + local_values[start_col + FP_SUBTRACTION_Y_OFFSET + j]
+                        - (local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j]
+                            * FE::from_canonical_u64(1 << 32))
+                        - local_values[start_col + FP_SUBTRACTION_X_OFFSET + j]),
+            )
+        } else {
+            yield_constr.constraint(
+                local_values[start_col + FP_SUBTRACTION_CHECK_OFFSET]
+                    * (local_values[start_col + FP_SUBTRACTION_DIFF_OFFSET + j]
+                        + local_values[start_col + FP_SUBTRACTION_Y_OFFSET + j]
+                        + local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j - 1]
+                        - (local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j]
+                            * FE::from_canonical_u64(1 << 32))
+                        - local_values[start_col + FP_SUBTRACTION_X_OFFSET + j]),
+            )
+        }
+    }
+}
+
 pub fn add_negate_fp_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -800,6 +974,105 @@ pub fn add_negate_fp_constraints<
     }
 }
 
+pub fn add_fp_single_multiply_constraints<
+    F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize,
+    >(
+    local_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize, // Starting column of your multiplication trace
+    ) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    for j in 0..12 {
+        if j == 0 {
+            yield_constr.constraint(
+                local_values[start_col + FP_MULTIPLY_SINGLE_CHECK_OFFSET] *
+                (local_values[start_col + FP_MULTIPLY_SINGLE_SUM_OFFSET + j]
+                    + (local_values[start_col + FP_MULTIPLY_SINGLE_CARRY_OFFSET + j]
+                        * FE::from_canonical_u64(1 << 32))
+                    - local_values[start_col + FP_MULTIPLY_SINGLE_X_OFFSET + j]
+                    * local_values[start_col + FP_MULTIPLY_SINGLE_Y_OFFSET]),
+            )
+        } else {
+            yield_constr.constraint(
+                local_values[start_col + FP_MULTIPLY_SINGLE_CHECK_OFFSET] *
+                (local_values[start_col + FP_MULTIPLY_SINGLE_SUM_OFFSET + j]
+                    + (local_values[start_col + FP_MULTIPLY_SINGLE_CARRY_OFFSET + j]
+                        * FE::from_canonical_u64(1 << 32))
+                    - local_values[start_col + FP_MULTIPLY_SINGLE_X_OFFSET + j]
+                    * local_values[start_col + FP_MULTIPLY_SINGLE_Y_OFFSET]
+                    - local_values[start_col + FP_MULTIPLY_SINGLE_CARRY_OFFSET + j - 1]),
+            )
+        }
+    }
+}
+
+pub fn add_fp_reduce_single_constraints<
+    F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize,
+    >(
+    local_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize, // Starting column of your multiplication trace
+    ) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    let modulus = modulus();
+    let modulus_u32 = get_u32_vec_from_literal(modulus);
+    for i in 0..12 {
+        yield_constr.constraint_transition(
+            local_values[start_col + FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET + FP_MULTIPLY_SINGLE_CHECK_OFFSET] * (
+                local_values[start_col + FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET + FP_MULTIPLY_SINGLE_X_OFFSET + i] -
+                FE::from_canonical_u32(modulus_u32[i])
+            )
+        );
+    }
+
+    add_fp_single_multiply_constraints(local_values, yield_constr, start_col + FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET);
+
+    for i in 0..12 {
+        yield_constr.constraint_transition(
+            local_values[start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET + FP_ADDITION_CHECK_OFFSET]
+                * (local_values[start_col + FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET + FP_MULTIPLY_SINGLE_SUM_OFFSET + i]
+                    - local_values[start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET + FP_ADDITION_X_OFFSET + i]),
+        );
+    }
+
+    add_addition_fp_constraints(
+        local_values,
+        yield_constr,
+        start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET,
+    );
+
+    for i in 0..12 {
+        yield_constr.constraint_transition(
+            local_values[start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET + FP_ADDITION_CHECK_OFFSET]
+                * (local_values[start_col + FP_SINGLE_REDUCED_OFFSET + i]
+                    - local_values
+                        [start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET + FP_ADDITION_Y_OFFSET + i]),
+        );
+    }
+
+    for i in 0..12 {
+        yield_constr.constraint_transition(
+            local_values[start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET + FP_ADDITION_CHECK_OFFSET]
+                * (local_values[start_col + FP_SINGLE_REDUCE_X_OFFSET + i]
+                    - local_values
+                        [start_col + FP_SINGLE_REDUCTION_ADDITION_OFFSET + FP_ADDITION_SUM_OFFSET + i]),
+        )
+    }
+
+}
+
 pub fn add_addition_fp2_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -814,30 +1087,44 @@ pub fn add_addition_fp2_constraints<
     FE: FieldExtension<D2, BaseField = F>,
     P: PackedField<Scalar = FE>,
 {
-    for i in 0..12 {
-        yield_constr.constraint(
-            local_values[start_col + FP2_ADDITION_CHECK_OFFSET] * (
-                local_values[start_col + FP2_ADDITION_X_OFFSET + i] - local_values[start_col + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i]
-            )
-        );
-        yield_constr.constraint(
-            local_values[start_col + FP2_ADDITION_CHECK_OFFSET] * (
-                local_values[start_col + FP2_ADDITION_Y_OFFSET + i] - local_values[start_col + FP2_ADDITION_0_OFFSET + FP_ADDITION_Y_OFFSET + i]
-            )
-        );
-        yield_constr.constraint(
-            local_values[start_col + FP2_ADDITION_CHECK_OFFSET] * (
-                local_values[start_col + FP2_ADDITION_X_OFFSET + i + 12] - local_values[start_col + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i]
-            )
-        );
-        yield_constr.constraint(
-            local_values[start_col + FP2_ADDITION_CHECK_OFFSET] * (
-                local_values[start_col + FP2_ADDITION_Y_OFFSET + i + 12] - local_values[start_col + FP2_ADDITION_1_OFFSET + FP_ADDITION_Y_OFFSET + i]
-            )
-        );
-    }
     add_addition_fp_constraints(local_values, yield_constr, start_col + FP2_ADDITION_0_OFFSET);
     add_addition_fp_constraints(local_values, yield_constr, start_col + FP2_ADDITION_1_OFFSET);
+}
+
+pub fn add_subtraction_fp2_constraints<
+    F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize,
+>(
+    local_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize, // Starting column of your multiplication trace
+) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    add_subtraction_fp_constraints(local_values, yield_constr, start_col + FP2_SUBTRACTION_0_OFFSET);
+    add_subtraction_fp_constraints(local_values, yield_constr, start_col + FP2_SUBTRACTION_1_OFFSET);
+}
+
+pub fn add_fp2_single_multiply_constraints<
+    F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize,
+>(
+    local_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize, // Starting column of your multiplication trace
+) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    add_fp_single_multiply_constraints(local_values, yield_constr, start_col + FP2_MULTIPLY_SINGLE_0_OFFSET);
+    add_fp_single_multiply_constraints(local_values, yield_constr, start_col + FP2_MULTIPLY_SINGLE_1_OFFSET);
 }
 
 pub fn add_negate_fp2_constraints<
@@ -858,12 +1145,12 @@ pub fn add_negate_fp2_constraints<
     let mod_u32 = get_u32_vec_from_literal(modulus());
     for i in 0..12 {
         yield_constr.constraint(
-            local_values[start_col + FP2_ADDITION_CHECK_OFFSET] * (
+            local_values[start_col + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
                 local_values[start_col + FP2_ADDITION_0_OFFSET + FP_ADDITION_SUM_OFFSET + i] - FE::from_canonical_u32(mod_u32[i])
             )
         );
         yield_constr.constraint(
-            local_values[start_col + FP2_ADDITION_CHECK_OFFSET] * (
+            local_values[start_col + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
                 local_values[start_col + FP2_ADDITION_1_OFFSET + FP_ADDITION_SUM_OFFSET + i] - FE::from_canonical_u32(mod_u32[i])
             )
         );
@@ -927,33 +1214,37 @@ pub fn add_range_check_constraints<
 
     for i in 0..12 {
         if i == 0 {
-            yield_constr.constraint_first_row(
-                local_values[start_col + RANGE_CHECK_SUM_OFFSET + i]
-                    + (local_values[start_col + RANGE_CHECK_SUM_CARRY_OFFSET + i]
-                        * FE::from_canonical_u64(1 << 32))
-                    - FE::from_canonical_u32(y_u32[i])
-                    - local_values[start_col + REDUCED_OFFSET + i],
-            )
+            yield_constr.constraint(
+                local_values[start_col + RANGE_CHECK_SELECTOR_OFFSET] * (
+                    local_values[start_col + RANGE_CHECK_SUM_OFFSET + i]
+                        + (local_values[start_col + RANGE_CHECK_SUM_CARRY_OFFSET + i]
+                            * FE::from_canonical_u64(1 << 32))
+                        - FE::from_canonical_u32(y_u32[i])
+                        - local_values[start_col - 12 + i]
+                )
+            );
         } else if i < 12 {
-            yield_constr.constraint_first_row(
-                local_values[start_col + RANGE_CHECK_SUM_OFFSET + i]
-                    + (local_values[start_col + RANGE_CHECK_SUM_CARRY_OFFSET + i]
-                        * FE::from_canonical_u64(1 << 32))
-                    - FE::from_canonical_u32(y_u32[i])
-                    - local_values[start_col + REDUCED_OFFSET + i]
-                    - local_values[start_col + RANGE_CHECK_SUM_CARRY_OFFSET + i - 1],
-            )
+            yield_constr.constraint(
+                local_values[start_col + RANGE_CHECK_SELECTOR_OFFSET] * (
+                    local_values[start_col + RANGE_CHECK_SUM_OFFSET + i]
+                        + (local_values[start_col + RANGE_CHECK_SUM_CARRY_OFFSET + i]
+                            * FE::from_canonical_u64(1 << 32))
+                        - FE::from_canonical_u32(y_u32[i])
+                        - local_values[start_col - 12 + i]
+                        - local_values[start_col + RANGE_CHECK_SUM_CARRY_OFFSET + i - 1]
+                )
+            );
         }
         let bit_col: usize = start_col + RANGE_CHECK_BIT_DECOMP_OFFSET;
         let val_reconstructed = bit_decomp_32!(local_values, bit_col, FE, P);
-        yield_constr.constraint_first_row(
-            val_reconstructed - local_values[start_col + RANGE_CHECK_SUM_OFFSET + 11],
+        yield_constr.constraint(
+            local_values[start_col + RANGE_CHECK_SELECTOR_OFFSET] * (val_reconstructed - local_values[start_col + RANGE_CHECK_SUM_OFFSET + 11])
         );
-        yield_constr.constraint_first_row(local_values[bit_col + 30]);
+        yield_constr.constraint(local_values[start_col + RANGE_CHECK_SELECTOR_OFFSET] * local_values[bit_col + 30]);
     }
 }
 
-fn add_reduce_range_check_constraints<
+fn add_reduce_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -1037,7 +1328,6 @@ fn add_reduce_range_check_constraints<
         )
     }
 
-    add_range_check_constraints(local_values, yield_constr, start_col);
 }
 
 fn add_fp2_mul_constraints<
@@ -1166,12 +1456,13 @@ fn add_fp2_mul_constraints<
 
 
     // constrain reduction
-    add_reduce_range_check_constraints(
+    add_reduce_constraints(
         local_values,
         next_values,
         yield_constr,
         start_col + Z1_REDUCE_OFFSET,
     );
+    add_range_check_constraints(local_values, yield_constr, start_col + Z1_RANGECHECK_OFFSET);
 
 
 
@@ -1224,12 +1515,13 @@ fn add_fp2_mul_constraints<
     }
 
     // constrain reduction
-    add_reduce_range_check_constraints(
+    add_reduce_constraints(
         local_values,
         next_values,
         yield_constr,
         start_col + Z2_REDUCE_OFFSET,
     );
+    add_range_check_constraints(local_values, yield_constr, start_col + Z2_RANGECHECK_OFFSET);
 }
 
 pub fn add_fp2_fp_mul_constraints<
@@ -1286,9 +1578,27 @@ pub fn add_fp2_fp_mul_constraints<
         );
     }
     add_multiplication_constraints(local_values, next_values, yield_constr, start_col + X0_Y_MULTIPLICATION_OFFSET);
-    add_reduce_range_check_constraints(local_values, next_values, yield_constr, start_col + X0_Y_REDUCE_RANGECHECK_OFFSET);
+    for i in 0..24 {
+        yield_constr.constraint(
+            local_values[start_col + X0_Y_REDUCE_OFFSET + REDUCTION_ADDITION_OFFSET + ADDITION_CHECK_OFFSET] * (
+                local_values[start_col + X0_Y_REDUCE_OFFSET + REDUCTION_ADDITION_OFFSET + ADDITION_SUM_OFFSET + i] -
+                local_values[start_col + X0_Y_MULTIPLICATION_OFFSET + SUM_OFFSET + i]
+            )
+        );
+    }
+    add_reduce_constraints(local_values, next_values, yield_constr, start_col + X0_Y_REDUCE_OFFSET);
+    add_range_check_constraints(local_values, yield_constr, start_col + X0_Y_RANGECHECK_OFFSET);
     add_multiplication_constraints(local_values, next_values, yield_constr, start_col + X1_Y_MULTIPLICATION_OFFSET);
-    add_reduce_range_check_constraints(local_values, next_values, yield_constr, start_col + X1_Y_REDUCE_RANGECHECK_OFFSET);
+    for i in 0..24 {
+        yield_constr.constraint(
+            local_values[start_col + X1_Y_REDUCE_OFFSET + REDUCTION_ADDITION_OFFSET + ADDITION_CHECK_OFFSET] * (
+                local_values[start_col + X1_Y_REDUCE_OFFSET + REDUCTION_ADDITION_OFFSET + ADDITION_SUM_OFFSET + i] -
+                local_values[start_col + X1_Y_MULTIPLICATION_OFFSET + SUM_OFFSET + i]
+            )
+        );
+    }
+    add_reduce_constraints(local_values, next_values, yield_constr, start_col + X1_Y_REDUCE_OFFSET);
+    add_range_check_constraints(local_values, yield_constr, start_col + X1_Y_RANGECHECK_OFFSET);
 }
 
 pub fn add_multiply_by_b_constraints<
@@ -1389,17 +1699,86 @@ pub fn add_multiply_by_b_constraints<
     for i in 0..24 {
         yield_constr.constraint(
             local_values[start_col + MULTIPLY_B_SUB_OFFSET + SUBTRACTION_CHECK_OFFSET] * (
-                local_values[start_col + MULTIPLY_B_Z0_OFFSET + REDUCE_X_OFFSET + i] - local_values[start_col + MULTIPLY_B_SUB_OFFSET + SUBTRACTION_DIFF_OFFSET + i]
+                local_values[start_col + MULTIPLY_B_Z0_REDUCE_OFFSET + REDUCE_X_OFFSET + i] - local_values[start_col + MULTIPLY_B_SUB_OFFSET + SUBTRACTION_DIFF_OFFSET + i]
             )
         );
         yield_constr.constraint(
             local_values[start_col + MULTIPLY_B_ADD_OFFSET + ADDITION_CHECK_OFFSET] * (
-                local_values[start_col + MULTIPLY_B_Z1_OFFSET + REDUCE_X_OFFSET + i] - local_values[start_col + MULTIPLY_B_ADD_OFFSET + ADDITION_SUM_OFFSET + i]
+                local_values[start_col + MULTIPLY_B_Z1_REDUCE_OFFSET + REDUCE_X_OFFSET + i] - local_values[start_col + MULTIPLY_B_ADD_OFFSET + ADDITION_SUM_OFFSET + i]
             )
         );
     }
-    add_reduce_range_check_constraints(local_values, next_values, yield_constr, start_col + MULTIPLY_B_Z0_OFFSET);
-    add_reduce_range_check_constraints(local_values, next_values, yield_constr, start_col + MULTIPLY_B_Z1_OFFSET);
+    add_reduce_constraints(local_values, next_values, yield_constr, start_col + MULTIPLY_B_Z0_REDUCE_OFFSET);
+    add_range_check_constraints(local_values, yield_constr, start_col + MULTIPLY_B_Z0_RANGECHECK_OFFSET);
+    add_reduce_constraints(local_values, next_values, yield_constr, start_col + MULTIPLY_B_Z1_REDUCE_OFFSET);
+    add_range_check_constraints(local_values, yield_constr, start_col + MULTIPLY_B_Z1_RANGECHECK_OFFSET);
+}
+
+pub fn add_subtraction_with_reduction_constranints<
+    F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize,
+    >(
+    local_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize, // Starting column of your multiplication trace
+    ) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    let modulus = get_u32_vec_from_literal(modulus());
+    for i in 0..12 {
+        yield_constr.constraint(
+            local_values[start_col + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                local_values[start_col + FP2_ADDITION_0_OFFSET + FP_ADDITION_Y_OFFSET + i] -
+                FE::from_canonical_u32(modulus[i])
+            )
+        );
+        yield_constr.constraint(
+            local_values[start_col + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                local_values[start_col + FP2_ADDITION_1_OFFSET + FP_ADDITION_Y_OFFSET + i] -
+                FE::from_canonical_u32(modulus[i])
+            )
+        );
+    }
+    add_addition_fp2_constraints(local_values, yield_constr, start_col);
+    for i in 0..12 {
+        yield_constr.constraint(
+            local_values[start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                local_values[start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_X_OFFSET + i] -
+                local_values[start_col + FP2_ADDITION_0_OFFSET + FP_ADDITION_SUM_OFFSET + i]
+            )
+        );
+        yield_constr.constraint(
+            local_values[start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                local_values[start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_X_OFFSET + i] -
+                local_values[start_col + FP2_ADDITION_1_OFFSET + FP_ADDITION_SUM_OFFSET + i]
+            )
+        );
+    }
+    add_subtraction_fp2_constraints(local_values, yield_constr, start_col + FP2_ADDITION_TOTAL);
+    for i in 0..12 {
+        yield_constr.constraint(
+            local_values[start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                local_values[start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_DIFF_OFFSET + i] -
+                local_values[start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_X_OFFSET + i]
+            )
+        );
+    }
+    add_fp_reduce_single_constraints(local_values, yield_constr, start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL);
+    add_range_check_constraints(local_values, yield_constr, start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL);
+    for i in 0..12 {
+        yield_constr.constraint(
+            local_values[start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                local_values[start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_DIFF_OFFSET + i] -
+                local_values[start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCE_X_OFFSET + i]
+            )
+        );
+    }
+    add_fp_reduce_single_constraints(local_values, yield_constr, start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL);
+    add_range_check_constraints(local_values, yield_constr, start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL*2 + RANGE_CHECK_TOTAL);
 }
 
 // Implement constraint generator
@@ -1617,11 +1996,11 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for PairingPrecom
         // T2
         for i in 0..12 {
             yield_constr.constraint_first_row(
-                local_values[X0_CALC_OFFSET + X0_Y_REDUCE_RANGECHECK_OFFSET + REDUCED_OFFSET + i] - 
+                local_values[X0_CALC_OFFSET + X0_Y_REDUCE_OFFSET + REDUCED_OFFSET + i] -
                 local_values[T2_CALC_OFFSET + MULTIPLY_B_X_OFFSET + i]
             );
             yield_constr.constraint_first_row(
-                local_values[X0_CALC_OFFSET + X1_Y_REDUCE_RANGECHECK_OFFSET + REDUCED_OFFSET + i] - 
+                local_values[X0_CALC_OFFSET + X1_Y_REDUCE_OFFSET + REDUCED_OFFSET + i] -
                 local_values[T2_CALC_OFFSET + MULTIPLY_B_X_OFFSET + i + 12]
             );
             if i == 0 {
@@ -1651,11 +2030,11 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for PairingPrecom
         for i in 0..12 {
             yield_constr.constraint_first_row(
                 local_values[T3_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + i] - 
-                local_values[T2_CALC_OFFSET + MULTIPLY_B_Z0_OFFSET + REDUCED_OFFSET + i]
+                local_values[T2_CALC_OFFSET + MULTIPLY_B_Z0_REDUCE_OFFSET + REDUCED_OFFSET + i]
             );
             yield_constr.constraint_first_row(
                 local_values[T3_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + 12 + i] - 
-                local_values[T2_CALC_OFFSET + MULTIPLY_B_Z1_OFFSET + REDUCED_OFFSET + i]
+                local_values[T2_CALC_OFFSET + MULTIPLY_B_Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
             );
             if i == 0 {
                 yield_constr.constraint_first_row(
@@ -1709,6 +2088,36 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for PairingPrecom
 
         add_fp2_fp_mul_constraints(local_values, next_values, yield_constr, T4_CALC_OFFSET);
 
+        // x2
+        for i in 0..12 {
+            yield_constr.constraint(
+                local_values[X2_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[X2_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[T2_CALC_OFFSET + MULTIPLY_B_Z0_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                local_values[X2_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[X2_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[T2_CALC_OFFSET + MULTIPLY_B_Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                local_values[X2_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                    local_values[X2_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_Y_OFFSET + i] -
+                    local_values[T0_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                local_values[X2_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                    local_values[X2_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_Y_OFFSET + i] -
+                    local_values[T0_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+        }
+
+        add_subtraction_with_reduction_constranints(local_values, yield_constr, X2_CALC_OFFSET);
+
         // x3
         for i in 0..24 {
             yield_constr.constraint_first_row(
@@ -1750,17 +2159,17 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for PairingPrecom
         // x5
         for i in 0..12 {
             yield_constr.constraint_transition(
-                local_values[X5_CALC_OFFSET + FP2_ADDITION_CHECK_OFFSET] *
+                local_values[X5_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET] *
                 (
-                    local_values[T4_CALC_OFFSET + X0_Y_REDUCE_RANGECHECK_OFFSET + REDUCED_OFFSET + i] -
-                    local_values[X5_CALC_OFFSET + FP2_ADDITION_X_OFFSET + i]
+                    local_values[T4_CALC_OFFSET + X0_Y_REDUCE_OFFSET + REDUCED_OFFSET + i] -
+                    local_values[X5_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i]
                 )
             );
             yield_constr.constraint_transition(
-                local_values[X5_CALC_OFFSET + FP2_ADDITION_CHECK_OFFSET] *
+                local_values[X5_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET] *
                 (
-                    local_values[T4_CALC_OFFSET + X1_Y_REDUCE_RANGECHECK_OFFSET + REDUCED_OFFSET + i] -
-                    local_values[X5_CALC_OFFSET + FP2_ADDITION_X_OFFSET + i + 12]
+                    local_values[T4_CALC_OFFSET + X1_Y_REDUCE_OFFSET + REDUCED_OFFSET + i] -
+                    local_values[X5_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i]
                 )
             );
         }
@@ -1781,7 +2190,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for PairingPrecom
     }
 
     fn constraint_degree(&self) -> usize {
-        2
+        3
     }
 }
 
