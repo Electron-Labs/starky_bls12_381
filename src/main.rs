@@ -96,7 +96,7 @@ fn calc_pairing_precomp() {
     type S = PairingPrecompStark<F, D>;
 
     let config = StarkConfig::standard_fast_config();
-    let mut stark = S::new(16);
+    let mut stark = S::new(1024);
     let s_ = stark.clone();
     let x: [u32; 12] = [
         1550366109, 1913070572, 760847606, 999580752, 3273422733, 182645169, 1634881460,

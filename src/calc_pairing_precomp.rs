@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{str::FromStr, cmp::min};
 
 use itertools::Itertools;
 use num_bigint::{BigUint, ToBigUint};
@@ -710,84 +710,86 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
             self.trace[row][QZ_OFFSET] = F::ONE;
         }
 
-        let (Rx, Ry, Rz) = (Qx, Qy, Qz);
-        for row in 0..12 {
-            self.trace[row][FIRST_LOOP_SELECTOR_OFFSET] = F::ONE;
-            for i in 0..24 {
-                self.trace[row][RX_OFFSET + i] = self.trace[row][QX_OFFSET + i];
-                self.trace[row][RY_OFFSET + i] = self.trace[row][QY_OFFSET + i];
-                self.trace[row][RZ_OFFSET + i] = self.trace[row][QZ_OFFSET + i];
+        let (mut Rx, mut Ry, mut Rz) = (Qx, Qy, Qz);
+        for n in 0..(self._num_rows/12 + 1) {
+            let start_row = n * 12;
+            let end_row = (n+1)*12;
+            for row in start_row..min(end_row, self._num_rows) {
+                if n == 0 {
+                    self.trace[row][FIRST_LOOP_SELECTOR_OFFSET] = F::ONE;
+                }
+                self.assign_u32_in_series(row, RX_OFFSET, &Rx.get_u32_slice()[0]);
+                self.assign_u32_in_series(row, RX_OFFSET + 12, &Rx.get_u32_slice()[1]);
+                self.assign_u32_in_series(row, RY_OFFSET, &Ry.get_u32_slice()[0]);
+                self.assign_u32_in_series(row, RY_OFFSET + 12, &Ry.get_u32_slice()[1]);
+                self.assign_u32_in_series(row, RZ_OFFSET, &Rz.get_u32_slice()[0]);
+                self.assign_u32_in_series(row, RZ_OFFSET + 12, &Rz.get_u32_slice()[1]);
             }
+            self.trace[start_row][FIRST_ROW_SELECTOR_OFFSET] = F::ONE;
+            if end_row > self._num_rows {
+                break;
+            }
+            // Loop 0
+            let values_0 = calc_precomp_stuff_loop0(Rx, Ry, Rz, Qx, Qy, Qz);
+            // t0
+            self.generate_trace_fp2_mul(Ry.get_u32_slice(), Ry.get_u32_slice(), start_row, end_row-1, T0_CALC_OFFSET);
+            // t1
+            self.generate_trace_fp2_mul(Rz.get_u32_slice(), Rz.get_u32_slice(), start_row, end_row-1, T1_CALC_OFFSET);
+            // x0
+            self.fill_trace_fp2_fp_mul(&values_0[4].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, X0_CALC_OFFSET);
+            // t2
+            self.fill_multiply_by_b_trace(&values_0[5].get_u32_slice(), start_row, end_row-1, T2_CALC_OFFSET);
+            // t3
+            self.fill_trace_fp2_fp_mul(&values_0[6].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, T3_CALC_OFFSET);
+            // x1
+            self.generate_trace_fp2_mul(Ry.get_u32_slice(), Rz.get_u32_slice(), start_row, end_row-1, X1_CALC_OFFSET);
+            // t4
+            self.fill_trace_fp2_fp_mul(&values_0[8].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("2").unwrap()).0, start_row, end_row-1, T4_CALC_OFFSET);
+            // x2
+            for row in start_row..end_row {
+                self.fill_trace_subtraction_with_reduction(&values_0[6].get_u32_slice(), &values_0[3].get_u32_slice(), row, X2_CALC_OFFSET);
+            }
+            // x3
+            self.generate_trace_fp2_mul(Rx.get_u32_slice(), Rx.get_u32_slice(), start_row, end_row-1, X3_CALC_OFFSET);
+            // x4
+            self.fill_trace_fp2_fp_mul(&values_0[10].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, X4_CALC_OFFSET);
+            // x5
+            for row in start_row..end_row {
+                self.fill_trace_negate_fp2(&values_0[9].get_u32_slice(), row, X5_CALC_OFFSET);
+            }
+            // x6
+            for row in start_row..end_row {
+                self.fill_trace_subtraction_with_reduction(&values_0[3].get_u32_slice(), &values_0[7].get_u32_slice(), row, X6_CALC_OFFSET);
+            }
+            // x7
+            self.generate_trace_fp2_mul(Rx.get_u32_slice(), Ry.get_u32_slice(), start_row, end_row-1, X7_CALC_OFFSET);
+            // x8
+            self.generate_trace_fp2_mul(values_0[14].get_u32_slice(), values_0[15].get_u32_slice(), start_row, end_row-1, X8_CALC_OFFSET);
+            // x9
+            for row in start_row..end_row {
+                self.fill_trace_addition_with_reduction(&values_0[3].get_u32_slice(), &values_0[7].get_u32_slice(), row, X9_CALC_OFFSET);
+            }
+            let k = get_u32_vec_from_literal(mod_inverse(BigUint::from(2 as u32), modulus()));
+            // x10
+            self.fill_trace_fp2_fp_mul(&values_0[17].get_u32_slice(), &k, start_row, end_row-1, X10_CALC_OFFSET);
+            // x11
+            self.generate_trace_fp2_mul(values_0[18].get_u32_slice(), values_0[18].get_u32_slice(), start_row, end_row-1, X11_CALC_OFFSET);
+            // x12
+            self.generate_trace_fp2_mul(values_0[6].get_u32_slice(), values_0[6].get_u32_slice(), start_row, end_row-1, X12_CALC_OFFSET);
+            // x13
+            self.fill_trace_fp2_fp_mul(&values_0[20].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, X13_CALC_OFFSET);
+            // new Rx
+            self.fill_trace_fp2_fp_mul(&values_0[16].get_u32_slice(), &k, start_row, end_row-1, NEW_RX_OFFSET);
+            // new Ry
+            for row in start_row..end_row {
+                self.fill_trace_subtraction_with_reduction(&values_0[19].get_u32_slice(), &values_0[21].get_u32_slice(), row, NEW_RY_OFFSET);
+            }
+            // new Rz
+            self.generate_trace_fp2_mul(values_0[3].get_u32_slice(), values_0[9].get_u32_slice(), start_row, end_row-1, NEW_RZ_OFFSET);
+            Rx = values_0[0];
+            Ry = values_0[1];
+            Rz = values_0[2];
         }
-        self.trace[0][FIRST_ROW_SELECTOR_OFFSET] = F::ONE;
-
-        // Loop 0
-        let values_0 = calc_precomp_stuff_loop0(Qx, Qy, Qz, Qx, Qy, Qz);
-        // t0
-        self.generate_trace_fp2_mul(Ry.get_u32_slice(), Ry.get_u32_slice(), 0, 11, T0_CALC_OFFSET);
-        // t1
-        self.generate_trace_fp2_mul(Rz.get_u32_slice(), Rz.get_u32_slice(), 0, 11, T1_CALC_OFFSET);
-        // x0
-        self.fill_trace_fp2_fp_mul(&values_0[4].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, 0, 11, X0_CALC_OFFSET);
-        // t2
-        self.fill_multiply_by_b_trace(&values_0[5].get_u32_slice(), 0, 11, T2_CALC_OFFSET);
-        // t3
-        self.fill_trace_fp2_fp_mul(&values_0[6].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, 0, 11, T3_CALC_OFFSET);
-        // x1
-        self.generate_trace_fp2_mul(Ry.get_u32_slice(), Rz.get_u32_slice(), 0, 11, X1_CALC_OFFSET);
-        // t4
-        self.fill_trace_fp2_fp_mul(&values_0[8].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("2").unwrap()).0, 0, 11, T4_CALC_OFFSET);
-        // x2
-        for row in 0..12 {
-            self.fill_trace_subtraction_with_reduction(&values_0[6].get_u32_slice(), &values_0[3].get_u32_slice(), row, X2_CALC_OFFSET);
-        }
-        // x3
-        self.generate_trace_fp2_mul(Rx.get_u32_slice(), Rx.get_u32_slice(), 0, 11, X3_CALC_OFFSET);
-        // x4
-        self.fill_trace_fp2_fp_mul(&values_0[10].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, 0, 11, X4_CALC_OFFSET);
-        // x5
-        for row in 0..12 {
-            self.fill_trace_negate_fp2(&values_0[9].get_u32_slice(), row, X5_CALC_OFFSET);
-        }
-        // x6
-        for row in 0..12 {
-            self.fill_trace_subtraction_with_reduction(&values_0[3].get_u32_slice(), &values_0[7].get_u32_slice(), row, X6_CALC_OFFSET);
-        }
-        // x7
-        self.generate_trace_fp2_mul(Rx.get_u32_slice(), Ry.get_u32_slice(), 0, 11, X7_CALC_OFFSET);
-        // x8
-        self.generate_trace_fp2_mul(values_0[14].get_u32_slice(), values_0[15].get_u32_slice(), 0, 11, X8_CALC_OFFSET);
-        // x9
-        for row in 0..12 {
-            self.fill_trace_addition_with_reduction(&values_0[3].get_u32_slice(), &values_0[7].get_u32_slice(), row, X9_CALC_OFFSET);
-        }
-        let k = get_u32_vec_from_literal(mod_inverse(BigUint::from(2 as u32), modulus()));
-        // x10
-        self.fill_trace_fp2_fp_mul(&values_0[17].get_u32_slice(), &k, 0, 11, X10_CALC_OFFSET);
-        // x11
-        self.generate_trace_fp2_mul(values_0[18].get_u32_slice(), values_0[18].get_u32_slice(), 0, 11, X11_CALC_OFFSET);
-        // x12
-        self.generate_trace_fp2_mul(values_0[6].get_u32_slice(), values_0[6].get_u32_slice(), 0, 11, X12_CALC_OFFSET);
-        // x13
-        self.fill_trace_fp2_fp_mul(&values_0[20].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, 0, 11, X13_CALC_OFFSET);
-        // new Rx
-        self.fill_trace_fp2_fp_mul(&values_0[16].get_u32_slice(), &k, 0, 11, NEW_RX_OFFSET);
-        // new Ry
-        for row in 0..12 {
-            self.fill_trace_subtraction_with_reduction(&values_0[19].get_u32_slice(), &values_0[21].get_u32_slice(), row, NEW_RY_OFFSET);
-        }
-        // new Rz
-        self.generate_trace_fp2_mul(values_0[3].get_u32_slice(), values_0[9].get_u32_slice(), 0, 11, NEW_RZ_OFFSET);
-
-        for row in 12..self._num_rows {
-            self.assign_u32_in_series(row, RX_OFFSET, &values_0[0].get_u32_slice()[0]);
-            self.assign_u32_in_series(row, RX_OFFSET + 12, &values_0[0].get_u32_slice()[1]);
-            self.assign_u32_in_series(row, RY_OFFSET, &values_0[1].get_u32_slice()[0]);
-            self.assign_u32_in_series(row, RY_OFFSET + 12, &values_0[1].get_u32_slice()[1]);
-            self.assign_u32_in_series(row, RZ_OFFSET, &values_0[2].get_u32_slice()[0]);
-            self.assign_u32_in_series(row, RZ_OFFSET + 12, &values_0[2].get_u32_slice()[1]);
-        }
-        self.trace[12][FIRST_ROW_SELECTOR_OFFSET] = F::ONE;
     }
 
 }
