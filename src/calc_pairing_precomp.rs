@@ -22,7 +22,7 @@ use starky::{
 use crate::native::{
     add_u32_slices, add_u32_slices_12, get_bits_as_array, get_div_rem_modulus_from_biguint_12,
     get_selector_bits_from_u32, get_u32_vec_from_literal, get_u32_vec_from_literal_24, modulus,
-    multiply_by_slice, sub_u32_slices, Fp, Fp2, calc_qs, calc_precomp_stuff_loop0, sub_u32_slices_12, mul_u32_slice_u32, mod_inverse,
+    multiply_by_slice, sub_u32_slices, Fp, Fp2, calc_qs, calc_precomp_stuff_loop0, sub_u32_slices_12, mul_u32_slice_u32, mod_inverse, get_bls_12_381_parameter, calc_precomp_stuff_loop1,
 };
 
 
@@ -182,6 +182,8 @@ pub const BIT1_SELECTOR_OFFSET: usize = FIRST_ROW_SELECTOR_OFFSET + 1;
 pub const RX_OFFSET: usize = BIT1_SELECTOR_OFFSET + 1;
 pub const RY_OFFSET: usize = RX_OFFSET + 24;
 pub const RZ_OFFSET: usize = RY_OFFSET + 24;
+
+// bit0 offsets
 pub const T0_CALC_OFFSET: usize = RZ_OFFSET + 24;
 pub const T1_CALC_OFFSET: usize = T0_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
 pub const X0_CALC_OFFSET: usize = T1_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
@@ -204,7 +206,35 @@ pub const X13_CALC_OFFSET: usize = X12_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLIC
 pub const NEW_RX_OFFSET: usize = X13_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
 pub const NEW_RY_OFFSET: usize = NEW_RX_OFFSET + FP2_FP_TOTAL_COLUMNS;
 pub const NEW_RZ_OFFSET: usize = NEW_RY_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL) * 2;
-pub const TOTAL_COLUMNS: usize = NEW_RZ_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const BIT0_TOTAL_COLUMNS: usize = NEW_RZ_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+
+// bit1 offsets
+pub const BIT1_T0_CALC_OFFSET: usize = RZ_OFFSET + 24;
+pub const BIT1_T1_CALC_OFFSET: usize = BIT1_T0_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const BIT1_T2_CALC_OFFSET: usize = BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL) * 2;
+pub const BIT1_T3_CALC_OFFSET: usize = BIT1_T2_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const BIT1_T4_CALC_OFFSET: usize = BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL) * 2;
+pub const BIT1_T5_CALC_OFFSET: usize = BIT1_T4_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const BIT1_T6_CALC_OFFSET: usize = BIT1_T5_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const BIT1_T7_CALC_OFFSET: usize = BIT1_T6_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL) * 2;
+pub const BIT1_T8_CALC_OFFSET: usize = BIT1_T7_CALC_OFFSET + FP2_ADDITION_TOTAL;
+pub const BIT1_T9_CALC_OFFSET: usize = BIT1_T8_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const BIT1_T10_CALC_OFFSET: usize = BIT1_T9_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const BIT1_T11_CALC_OFFSET: usize = BIT1_T10_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const BIT1_T12_CALC_OFFSET: usize = BIT1_T11_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const BIT1_T13_CALC_OFFSET: usize = BIT1_T12_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const BIT1_T14_CALC_OFFSET: usize = BIT1_T13_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
+pub const BIT1_T15_CALC_OFFSET: usize = BIT1_T14_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL) * 2;
+pub const BIT1_T16_CALC_OFFSET: usize = BIT1_T15_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL) * 2;
+pub const BIT1_T17_CALC_OFFSET: usize = BIT1_T16_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL) * 2;
+pub const BIT1_T18_CALC_OFFSET: usize = BIT1_T17_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const BIT1_RX_CALC_OFFSET: usize = BIT1_T18_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const BIT1_RY_CALC_OFFSET: usize = BIT1_RX_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const BIT1_RZ_CALC_OFFSET: usize = BIT1_RY_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL) * 2;
+pub const BIT1_TOTAL_COLUMNS: usize = BIT1_RZ_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+
+pub const TOTAL_COLUMNS: usize = BIT1_TOTAL_COLUMNS;
+// pub const TOTAL_COLUMNS: usize = BIT0_TOTAL_COLUMNS;
 
 pub const COLUMNS: usize = TOTAL_COLUMNS;
 pub const PUBLIC_INPUTS: usize = 72;
@@ -712,6 +742,8 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         }
 
         let (mut Rx, mut Ry, mut Rz) = (Qx, Qy, Qz);
+        let mut bit_pos = 62;
+        let mut bit1 = false;
         for n in 0..(self._num_rows/12 + 1) {
             let start_row = n * 12;
             let end_row = (n+1)*12;
@@ -725,71 +757,152 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
                 self.assign_u32_in_series(row, RY_OFFSET + 12, &Ry.get_u32_slice()[1]);
                 self.assign_u32_in_series(row, RZ_OFFSET, &Rz.get_u32_slice()[0]);
                 self.assign_u32_in_series(row, RZ_OFFSET + 12, &Rz.get_u32_slice()[1]);
+                if bit1 {
+                    self.trace[row][BIT1_SELECTOR_OFFSET] = F::ONE;
+                }
             }
             self.trace[start_row][FIRST_ROW_SELECTOR_OFFSET] = F::ONE;
             if end_row > self._num_rows {
                 break;
             }
-            // Loop 0
-            let values_0 = calc_precomp_stuff_loop0(Rx, Ry, Rz, Qx, Qy, Qz);
-            // t0
-            self.generate_trace_fp2_mul(Ry.get_u32_slice(), Ry.get_u32_slice(), start_row, end_row-1, T0_CALC_OFFSET);
-            // t1
-            self.generate_trace_fp2_mul(Rz.get_u32_slice(), Rz.get_u32_slice(), start_row, end_row-1, T1_CALC_OFFSET);
-            // x0
-            self.fill_trace_fp2_fp_mul(&values_0[4].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, X0_CALC_OFFSET);
-            // t2
-            self.fill_multiply_by_b_trace(&values_0[5].get_u32_slice(), start_row, end_row-1, T2_CALC_OFFSET);
-            // t3
-            self.fill_trace_fp2_fp_mul(&values_0[6].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, T3_CALC_OFFSET);
-            // x1
-            self.generate_trace_fp2_mul(Ry.get_u32_slice(), Rz.get_u32_slice(), start_row, end_row-1, X1_CALC_OFFSET);
-            // t4
-            self.fill_trace_fp2_fp_mul(&values_0[8].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("2").unwrap()).0, start_row, end_row-1, T4_CALC_OFFSET);
-            // x2
-            for row in start_row..end_row {
-                self.fill_trace_subtraction_with_reduction(&values_0[6].get_u32_slice(), &values_0[3].get_u32_slice(), row, X2_CALC_OFFSET);
+            if !bit1 {
+                // Loop 0
+                let values_0 = calc_precomp_stuff_loop0(Rx, Ry, Rz, Qx, Qy, Qz);
+                // t0
+                self.generate_trace_fp2_mul(Ry.get_u32_slice(), Ry.get_u32_slice(), start_row, end_row-1, T0_CALC_OFFSET);
+                // t1
+                self.generate_trace_fp2_mul(Rz.get_u32_slice(), Rz.get_u32_slice(), start_row, end_row-1, T1_CALC_OFFSET);
+                // x0
+                self.fill_trace_fp2_fp_mul(&values_0[4].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, X0_CALC_OFFSET);
+                // t2
+                self.fill_multiply_by_b_trace(&values_0[5].get_u32_slice(), start_row, end_row-1, T2_CALC_OFFSET);
+                // t3
+                self.fill_trace_fp2_fp_mul(&values_0[6].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, T3_CALC_OFFSET);
+                // x1
+                self.generate_trace_fp2_mul(Ry.get_u32_slice(), Rz.get_u32_slice(), start_row, end_row-1, X1_CALC_OFFSET);
+                // t4
+                self.fill_trace_fp2_fp_mul(&values_0[8].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("2").unwrap()).0, start_row, end_row-1, T4_CALC_OFFSET);
+                // x2
+                for row in start_row..end_row {
+                    self.fill_trace_subtraction_with_reduction(&values_0[6].get_u32_slice(), &values_0[3].get_u32_slice(), row, X2_CALC_OFFSET);
+                }
+                // x3
+                self.generate_trace_fp2_mul(Rx.get_u32_slice(), Rx.get_u32_slice(), start_row, end_row-1, X3_CALC_OFFSET);
+                // x4
+                self.fill_trace_fp2_fp_mul(&values_0[10].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, X4_CALC_OFFSET);
+                // x5
+                for row in start_row..end_row {
+                    self.fill_trace_negate_fp2(&values_0[9].get_u32_slice(), row, X5_CALC_OFFSET);
+                }
+                // x6
+                for row in start_row..end_row {
+                    self.fill_trace_subtraction_with_reduction(&values_0[3].get_u32_slice(), &values_0[7].get_u32_slice(), row, X6_CALC_OFFSET);
+                }
+                // x7
+                self.generate_trace_fp2_mul(Rx.get_u32_slice(), Ry.get_u32_slice(), start_row, end_row-1, X7_CALC_OFFSET);
+                // x8
+                self.generate_trace_fp2_mul(values_0[14].get_u32_slice(), values_0[15].get_u32_slice(), start_row, end_row-1, X8_CALC_OFFSET);
+                // x9
+                for row in start_row..end_row {
+                    self.fill_trace_addition_with_reduction(&values_0[3].get_u32_slice(), &values_0[7].get_u32_slice(), row, X9_CALC_OFFSET);
+                }
+                let k = get_u32_vec_from_literal(mod_inverse(BigUint::from(2 as u32), modulus()));
+                // x10
+                self.fill_trace_fp2_fp_mul(&values_0[17].get_u32_slice(), &k, start_row, end_row-1, X10_CALC_OFFSET);
+                // x11
+                self.generate_trace_fp2_mul(values_0[18].get_u32_slice(), values_0[18].get_u32_slice(), start_row, end_row-1, X11_CALC_OFFSET);
+                // x12
+                self.generate_trace_fp2_mul(values_0[6].get_u32_slice(), values_0[6].get_u32_slice(), start_row, end_row-1, X12_CALC_OFFSET);
+                // x13
+                self.fill_trace_fp2_fp_mul(&values_0[20].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, X13_CALC_OFFSET);
+                // new Rx
+                self.fill_trace_fp2_fp_mul(&values_0[16].get_u32_slice(), &k, start_row, end_row-1, NEW_RX_OFFSET);
+                // new Ry
+                for row in start_row..end_row {
+                    self.fill_trace_subtraction_with_reduction(&values_0[19].get_u32_slice(), &values_0[21].get_u32_slice(), row, NEW_RY_OFFSET);
+                }
+                // new Rz
+                self.generate_trace_fp2_mul(values_0[3].get_u32_slice(), values_0[9].get_u32_slice(), start_row, end_row-1, NEW_RZ_OFFSET);
+                Rx = values_0[0];
+                Ry = values_0[1];
+                Rz = values_0[2];
+
+                bit1 = get_bls_12_381_parameter().bit(bit_pos);
+                bit_pos = if bit1 {
+                    bit_pos
+                } else {
+                    bit_pos.checked_sub(1).unwrap_or(0)
+                }
+            } else {
+                let values_1 = calc_precomp_stuff_loop1(Rx, Ry, Rz, Qx, Qy, Qz);
+                // bit1_t0
+                self.generate_trace_fp2_mul(Qy.get_u32_slice(), Rz.get_u32_slice(), start_row, end_row-1, BIT1_T0_CALC_OFFSET);
+                // bit1_t1
+                for row in start_row..end_row {
+                    self.fill_trace_subtraction_with_reduction(&Ry.get_u32_slice(), &values_1[3].get_u32_slice(), row, BIT1_T1_CALC_OFFSET);
+                }
+                // bit1_t2
+                self.generate_trace_fp2_mul(Qx.get_u32_slice(), Rz.get_u32_slice(), start_row, end_row-1, BIT1_T2_CALC_OFFSET);
+                // bit1_t3
+                for row in start_row..end_row {
+                    self.fill_trace_subtraction_with_reduction(&Rx.get_u32_slice(), &values_1[5].get_u32_slice(), row, BIT1_T3_CALC_OFFSET);
+                }
+                // bit1_t4
+                self.generate_trace_fp2_mul(values_1[4].get_u32_slice(), Qx.get_u32_slice(), start_row, end_row-1, BIT1_T4_CALC_OFFSET);
+                // bit1_t5
+                self.generate_trace_fp2_mul(values_1[6].get_u32_slice(), Qy.get_u32_slice(), start_row, end_row-1, BIT1_T5_CALC_OFFSET);
+                // bit1_t6
+                for row in start_row..end_row {
+                    self.fill_trace_subtraction_with_reduction(&values_1[7].get_u32_slice(), &values_1[8].get_u32_slice(), row, BIT1_T6_CALC_OFFSET);
+                }
+                // bit1_t7
+                for row in start_row..end_row {
+                    self.fill_trace_negate_fp2(&values_1[4].get_u32_slice(), row, BIT1_T7_CALC_OFFSET);
+                }
+                // bit1_t8
+                self.generate_trace_fp2_mul(values_1[6].get_u32_slice(), values_1[6].get_u32_slice(), start_row, end_row-1, BIT1_T8_CALC_OFFSET);
+                // bit1_t9
+                self.generate_trace_fp2_mul(values_1[11].get_u32_slice(), values_1[6].get_u32_slice(), start_row, end_row-1, BIT1_T9_CALC_OFFSET);
+                // bit1_t10
+                self.generate_trace_fp2_mul(values_1[11].get_u32_slice(), Rx.get_u32_slice(), start_row, end_row-1, BIT1_T10_CALC_OFFSET);
+                // bit1_t11
+                self.generate_trace_fp2_mul(values_1[4].get_u32_slice(), values_1[4].get_u32_slice(), start_row, end_row-1, BIT1_T11_CALC_OFFSET);
+                // bit1_t12
+                self.generate_trace_fp2_mul(values_1[14].get_u32_slice(), Rz.get_u32_slice(), start_row, end_row-1, BIT1_T12_CALC_OFFSET);
+                // bit1_t13
+                self.fill_trace_fp2_fp_mul(&values_1[13].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("2").unwrap()).0, start_row, end_row-1, BIT1_T13_CALC_OFFSET);
+                // bit1_t14
+                for row in start_row..end_row {
+                    self.fill_trace_subtraction_with_reduction(&values_1[12].get_u32_slice(), &values_1[16].get_u32_slice(), row, BIT1_T14_CALC_OFFSET);
+                }
+                // bit1_t15
+                for row in start_row..end_row {
+                    self.fill_trace_addition_with_reduction(&values_1[17].get_u32_slice(), &values_1[15].get_u32_slice(), row, BIT1_T15_CALC_OFFSET);
+                }
+                // bit1_t16
+                for row in start_row..end_row {
+                    self.fill_trace_subtraction_with_reduction(&values_1[13].get_u32_slice(), &values_1[18].get_u32_slice(), row, BIT1_T16_CALC_OFFSET);
+                }
+                // bit1_t17
+                self.generate_trace_fp2_mul(values_1[19].get_u32_slice(), values_1[4].get_u32_slice(), start_row, end_row-1, BIT1_T17_CALC_OFFSET);
+                // bit1_t18
+                self.generate_trace_fp2_mul(values_1[12].get_u32_slice(), Ry.get_u32_slice(), start_row, end_row-1, BIT1_T18_CALC_OFFSET);
+                // new Rx
+                self.generate_trace_fp2_mul(values_1[6].get_u32_slice(), values_1[18].get_u32_slice(), start_row, end_row-1, BIT1_RX_CALC_OFFSET);
+                // new Ry
+                for row in start_row..end_row {
+                    self.fill_trace_subtraction_with_reduction(&values_1[20].get_u32_slice(), &values_1[21].get_u32_slice(), row, BIT1_RY_CALC_OFFSET);
+                }
+                // new Rz
+                self.generate_trace_fp2_mul(Rz.get_u32_slice(), values_1[12].get_u32_slice(), start_row, end_row-1, BIT1_RZ_CALC_OFFSET);
+
+
+                Rx = values_1[0];
+                Ry = values_1[1];
+                Rz = values_1[2];
+                bit1 = false;
+                bit_pos.checked_sub(1).unwrap_or(0);
             }
-            // x3
-            self.generate_trace_fp2_mul(Rx.get_u32_slice(), Rx.get_u32_slice(), start_row, end_row-1, X3_CALC_OFFSET);
-            // x4
-            self.fill_trace_fp2_fp_mul(&values_0[10].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, X4_CALC_OFFSET);
-            // x5
-            for row in start_row..end_row {
-                self.fill_trace_negate_fp2(&values_0[9].get_u32_slice(), row, X5_CALC_OFFSET);
-            }
-            // x6
-            for row in start_row..end_row {
-                self.fill_trace_subtraction_with_reduction(&values_0[3].get_u32_slice(), &values_0[7].get_u32_slice(), row, X6_CALC_OFFSET);
-            }
-            // x7
-            self.generate_trace_fp2_mul(Rx.get_u32_slice(), Ry.get_u32_slice(), start_row, end_row-1, X7_CALC_OFFSET);
-            // x8
-            self.generate_trace_fp2_mul(values_0[14].get_u32_slice(), values_0[15].get_u32_slice(), start_row, end_row-1, X8_CALC_OFFSET);
-            // x9
-            for row in start_row..end_row {
-                self.fill_trace_addition_with_reduction(&values_0[3].get_u32_slice(), &values_0[7].get_u32_slice(), row, X9_CALC_OFFSET);
-            }
-            let k = get_u32_vec_from_literal(mod_inverse(BigUint::from(2 as u32), modulus()));
-            // x10
-            self.fill_trace_fp2_fp_mul(&values_0[17].get_u32_slice(), &k, start_row, end_row-1, X10_CALC_OFFSET);
-            // x11
-            self.generate_trace_fp2_mul(values_0[18].get_u32_slice(), values_0[18].get_u32_slice(), start_row, end_row-1, X11_CALC_OFFSET);
-            // x12
-            self.generate_trace_fp2_mul(values_0[6].get_u32_slice(), values_0[6].get_u32_slice(), start_row, end_row-1, X12_CALC_OFFSET);
-            // x13
-            self.fill_trace_fp2_fp_mul(&values_0[20].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, X13_CALC_OFFSET);
-            // new Rx
-            self.fill_trace_fp2_fp_mul(&values_0[16].get_u32_slice(), &k, start_row, end_row-1, NEW_RX_OFFSET);
-            // new Ry
-            for row in start_row..end_row {
-                self.fill_trace_subtraction_with_reduction(&values_0[19].get_u32_slice(), &values_0[21].get_u32_slice(), row, NEW_RY_OFFSET);
-            }
-            // new Rz
-            self.generate_trace_fp2_mul(values_0[3].get_u32_slice(), values_0[9].get_u32_slice(), start_row, end_row-1, NEW_RZ_OFFSET);
-            Rx = values_0[0];
-            Ry = values_0[1];
-            Rz = values_0[2];
         }
     }
 
@@ -2192,6 +2305,21 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for PairingPrecom
                     (P::ONES - next_values[FIRST_LOOP_SELECTOR_OFFSET]) * next_values[FIRST_ROW_SELECTOR_OFFSET] *
                     (next_values[RZ_OFFSET + i] - local_values[NEW_RZ_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i])
                 );
+                yield_constr.constraint(
+                    bit1 *
+                    (P::ONES - next_values[FIRST_LOOP_SELECTOR_OFFSET]) * next_values[FIRST_ROW_SELECTOR_OFFSET] *
+                    (next_values[RX_OFFSET + i] - local_values[BIT1_RX_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i])
+                );
+                yield_constr.constraint(
+                    bit1 *
+                    (P::ONES - next_values[FIRST_LOOP_SELECTOR_OFFSET]) * next_values[FIRST_ROW_SELECTOR_OFFSET] *
+                    (next_values[RY_OFFSET + i] - local_values[BIT1_RY_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i])
+                );
+                yield_constr.constraint(
+                    bit1 *
+                    (P::ONES - next_values[FIRST_LOOP_SELECTOR_OFFSET]) * next_values[FIRST_ROW_SELECTOR_OFFSET] *
+                    (next_values[RZ_OFFSET + i] - local_values[BIT1_RZ_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i])
+                );
             } else {
                 yield_constr.constraint(
                     bit0 *
@@ -2207,6 +2335,21 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for PairingPrecom
                     bit0 *
                     (P::ONES - next_values[FIRST_LOOP_SELECTOR_OFFSET]) * next_values[FIRST_ROW_SELECTOR_OFFSET] *
                     (next_values[RZ_OFFSET + i] - local_values[NEW_RZ_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i - 12])
+                );
+                yield_constr.constraint(
+                    bit1 *
+                    (P::ONES - next_values[FIRST_LOOP_SELECTOR_OFFSET]) * next_values[FIRST_ROW_SELECTOR_OFFSET] *
+                    (next_values[RX_OFFSET + i] - local_values[BIT1_RX_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i - 12])
+                );
+                yield_constr.constraint(
+                    bit1 *
+                    (P::ONES - next_values[FIRST_LOOP_SELECTOR_OFFSET]) * next_values[FIRST_ROW_SELECTOR_OFFSET] *
+                    (next_values[RY_OFFSET + i] - local_values[BIT1_RY_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i - 12])
+                );
+                yield_constr.constraint(
+                    bit1 *
+                    (P::ONES - next_values[FIRST_LOOP_SELECTOR_OFFSET]) * next_values[FIRST_ROW_SELECTOR_OFFSET] *
+                    (next_values[RZ_OFFSET + i] - local_values[BIT1_RZ_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i - 12])
                 );
             }
             yield_constr.constraint_transition(
@@ -2900,6 +3043,748 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for PairingPrecom
         }
 
         add_fp2_mul_constraints(local_values, next_values, yield_constr, NEW_RZ_OFFSET, bit0);
+
+        // bit1_t0
+        for i in 0..24 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T0_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T0_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] -
+                local_values[QY_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T0_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T0_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] -
+                local_values[RZ_OFFSET + i]
+            )
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, BIT1_T0_CALC_OFFSET, bit1);
+
+        // bit1_t1
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[RY_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[RY_OFFSET + i + 12]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                    local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_Y_OFFSET + i] -
+                    local_values[BIT1_T0_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                    local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_Y_OFFSET + i] -
+                    local_values[BIT1_T0_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+        }
+
+        add_subtraction_with_reduction_constranints(local_values, yield_constr, BIT1_T1_CALC_OFFSET, bit1);
+
+        // bit1_t2
+        for i in 0..24 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T2_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T2_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] -
+                local_values[QX_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T2_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T2_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] -
+                local_values[RZ_OFFSET + i]
+            )
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, BIT1_T2_CALC_OFFSET, bit1);
+
+        // bit1_t3
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[RX_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[RX_OFFSET + i + 12]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                    local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_Y_OFFSET + i] -
+                    local_values[BIT1_T2_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                    local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_Y_OFFSET + i] -
+                    local_values[BIT1_T2_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+        }
+
+        add_subtraction_with_reduction_constranints(local_values, yield_constr, BIT1_T3_CALC_OFFSET, bit1);
+
+        // bit1_t4
+        for i in 0..24 {
+            if i < 12 {
+                yield_constr.constraint(
+                    bit1 *
+                    local_values[BIT1_T4_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                    (
+                    local_values[BIT1_T4_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] -
+                    local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+                )
+                );
+            } else {
+                yield_constr.constraint(
+                    bit1 *
+                    local_values[BIT1_T4_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                    (
+                    local_values[BIT1_T4_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] -
+                    local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i - 12]
+                )
+                );
+            }
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T4_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T4_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] -
+                local_values[QX_OFFSET + i]
+            )
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, BIT1_T4_CALC_OFFSET, bit1);
+
+        // bit1_t5
+        for i in 0..24 {
+            if i < 12 {
+                yield_constr.constraint(
+                    bit1 *
+                    local_values[BIT1_T5_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                    (
+                    local_values[BIT1_T5_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] -
+                    local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+                )
+                );
+            } else {
+                yield_constr.constraint(
+                    bit1 *
+                    local_values[BIT1_T5_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                    (
+                    local_values[BIT1_T5_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] -
+                    local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i - 12]
+                )
+                );
+            }
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T5_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T5_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] -
+                local_values[QY_OFFSET + i]
+            )
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, BIT1_T5_CALC_OFFSET, bit1);
+
+        // bit1_t6
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T6_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_T6_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[BIT1_T4_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T6_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_T6_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[BIT1_T4_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T6_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                    local_values[BIT1_T6_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_Y_OFFSET + i] -
+                    local_values[BIT1_T5_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T6_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                    local_values[BIT1_T6_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_Y_OFFSET + i] -
+                    local_values[BIT1_T5_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+        }
+
+        add_subtraction_with_reduction_constranints(local_values, yield_constr, BIT1_T6_CALC_OFFSET, bit1);
+
+        // bit1_t7
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T7_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET] *
+                (
+                    local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i] -
+                    local_values[BIT1_T7_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T7_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET] *
+                (
+                    local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i] -
+                    local_values[BIT1_T7_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i]
+                )
+            );
+        }
+        add_negate_fp2_constraints(local_values, yield_constr, BIT1_T7_CALC_OFFSET, bit1);
+
+        // bit1_t8
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T8_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T8_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] -
+                local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T8_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T8_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i + 12] -
+                local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T8_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T8_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] -
+                local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T8_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T8_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i + 12] -
+                local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, BIT1_T8_CALC_OFFSET, bit1);
+
+        // bit1_t9
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T9_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T9_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] -
+                local_values[BIT1_T8_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T9_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T9_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i + 12] -
+                local_values[BIT1_T8_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T9_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T9_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] -
+                local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T9_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T9_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i + 12] -
+                local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, BIT1_T9_CALC_OFFSET, bit1);
+
+        // bit1_t10
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T10_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T10_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] -
+                local_values[BIT1_T8_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T10_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T10_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i + 12] -
+                local_values[BIT1_T8_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T10_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T10_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] -
+                local_values[RX_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T10_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T10_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i + 12] -
+                local_values[RX_OFFSET + i + 12]
+            )
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, BIT1_T10_CALC_OFFSET, bit1);
+
+        // bit1_t11
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T11_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T11_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] -
+                local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T11_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T11_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i + 12] -
+                local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T11_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T11_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] -
+                local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T11_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T11_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i + 12] -
+                local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, BIT1_T11_CALC_OFFSET, bit1);
+
+        // bit1_t12
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T12_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T12_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] -
+                local_values[BIT1_T11_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T12_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T12_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i + 12] -
+                local_values[BIT1_T11_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T12_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T12_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] -
+                local_values[RZ_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T12_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T12_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i + 12] -
+                local_values[RZ_OFFSET + i + 12]
+            )
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, BIT1_T12_CALC_OFFSET, bit1);
+
+        // bit1_t13
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T13_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] * (
+                local_values[BIT1_T13_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + i] -
+                local_values[BIT1_T10_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T13_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] * (
+                local_values[BIT1_T13_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + 12 + i] -
+                local_values[BIT1_T10_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            if i == 0 {
+                yield_constr.constraint(
+                    bit1 *
+                    local_values[BIT1_T13_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] * (
+                    local_values[BIT1_T13_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET] -
+                    FE::from_canonical_u32(2 as u32)
+                    )
+                );
+            } else {
+                yield_constr.constraint(
+                    bit1 *
+                    local_values[BIT1_T13_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] * (
+                    local_values[BIT1_T13_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i]
+                    )
+                );
+            }
+        }
+
+        add_fp2_fp_mul_constraints(local_values, next_values, yield_constr, BIT1_T13_CALC_OFFSET, bit1);
+
+        // bit1_t14
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T14_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_T14_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[BIT1_T9_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T14_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_T14_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[BIT1_T9_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T14_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                    local_values[BIT1_T14_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_Y_OFFSET + i] -
+                    local_values[BIT1_T13_CALC_OFFSET + X0_Y_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T14_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                    local_values[BIT1_T14_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_Y_OFFSET + i] -
+                    local_values[BIT1_T13_CALC_OFFSET + X1_Y_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+        }
+
+        add_subtraction_with_reduction_constranints(local_values, yield_constr, BIT1_T14_CALC_OFFSET, bit1);
+
+        // bit1_T15
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T15_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_T15_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[BIT1_T14_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T15_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_T15_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[BIT1_T14_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T15_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_T15_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_Y_OFFSET + i] -
+                    local_values[BIT1_T12_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T15_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_T15_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_Y_OFFSET + i] -
+                    local_values[BIT1_T12_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+        }
+
+        add_addition_with_reduction_constranints(local_values, yield_constr, BIT1_T15_CALC_OFFSET, bit1);
+
+        // bit1_t16
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T16_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_T16_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[BIT1_T10_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T16_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_T16_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[BIT1_T10_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T16_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                    local_values[BIT1_T16_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_Y_OFFSET + i] -
+                    local_values[BIT1_T15_CALC_OFFSET + FP2_ADDITION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T16_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                    local_values[BIT1_T16_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_Y_OFFSET + i] -
+                    local_values[BIT1_T15_CALC_OFFSET + FP2_ADDITION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+                )
+            );
+        }
+
+        add_subtraction_with_reduction_constranints(local_values, yield_constr, BIT1_T16_CALC_OFFSET, bit1);
+
+        // bit1_t17
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T17_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T17_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] -
+                local_values[BIT1_T16_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T17_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T17_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i + 12] -
+                local_values[BIT1_T16_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T17_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T17_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] -
+                local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T17_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T17_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i + 12] -
+                local_values[BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, BIT1_T17_CALC_OFFSET, bit1);
+
+        // bit1_t18
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T18_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T18_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] -
+                local_values[BIT1_T9_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T18_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T18_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i + 12] -
+                local_values[BIT1_T9_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T18_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T18_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] -
+                local_values[RY_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_T18_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_T18_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i + 12] -
+                local_values[RY_OFFSET + i + 12]
+            )
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, BIT1_T18_CALC_OFFSET, bit1);
+
+        // bit1_rx
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_RX_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_RX_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] -
+                local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_RX_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_RX_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i + 12] -
+                local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_RX_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_RX_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] -
+                local_values[BIT1_T15_CALC_OFFSET + FP2_ADDITION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_RX_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_RX_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i + 12] -
+                local_values[BIT1_T15_CALC_OFFSET + FP2_ADDITION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]
+            )
+            );
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, BIT1_RX_CALC_OFFSET, bit1);
+
+        // bit1_ry
+        for i in 0..12 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_RY_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_RY_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[BIT1_T17_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_RY_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET] * (
+                    local_values[BIT1_RY_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i] -
+                    local_values[BIT1_T17_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_RY_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                    local_values[BIT1_RY_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_Y_OFFSET + i] -
+                    local_values[BIT1_T18_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_RY_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_CHECK_OFFSET] * (
+                    local_values[BIT1_RY_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_Y_OFFSET + i] -
+                    local_values[BIT1_T18_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+            );
+        }
+
+        add_subtraction_with_reduction_constranints(local_values, yield_constr, BIT1_RY_CALC_OFFSET, bit1);
+
+        // bit1_rz
+        for i in 0..24 {
+            yield_constr.constraint(
+                bit1 *
+                local_values[BIT1_RZ_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (
+                local_values[BIT1_RZ_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] -
+                local_values[RZ_OFFSET + i]
+            )
+            );
+            if i <12 {
+                yield_constr.constraint(
+                    bit1 *
+                    local_values[BIT1_RZ_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                    (
+                    local_values[BIT1_RZ_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] -
+                    local_values[BIT1_T9_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]
+                )
+                );
+            } else {
+                yield_constr.constraint(
+                    bit1 *
+                    local_values[BIT1_RZ_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                    (
+                    local_values[BIT1_RZ_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] -
+                    local_values[BIT1_T9_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i - 12]
+                )
+                );
+            }
+        }
+
+        add_fp2_mul_constraints(local_values, next_values, yield_constr, BIT1_RZ_CALC_OFFSET, bit1);
     }
 
     type EvaluationFrameTarget =
@@ -2915,7 +3800,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for PairingPrecom
     }
 
     fn constraint_degree(&self) -> usize {
-        3
+        4
     }
 }
 

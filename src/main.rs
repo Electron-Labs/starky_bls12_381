@@ -95,7 +95,8 @@ fn calc_pairing_precomp() {
     type F = <C as GenericConfig<D>>::F;
     type S = PairingPrecompStark<F, D>;
 
-    let config = StarkConfig::standard_fast_config();
+    let mut config = StarkConfig::standard_fast_config();
+    config.fri_config.rate_bits = 2;
     let mut stark = S::new(1024);
     let s_ = stark.clone();
     let x: [u32; 12] = [

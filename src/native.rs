@@ -307,6 +307,46 @@ pub fn calc_precomp_stuff_loop0(Rx: Fp2, Ry: Fp2, Rz: Fp2,
     vec![new_Rx, new_Ry, new_Rz, t0, t1, x0, t2, t3, x1, t4, x3, x2, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13]
 }
 
+pub fn calc_precomp_stuff_loop1(Rx: Fp2, Ry: Fp2, Rz: Fp2, Qx: Fp2, Qy: Fp2, Qz: Fp2) -> Vec<Fp2> {
+    let bit1_t0 = Qy * Rz;
+    let bit1_t1 = Ry - bit1_t0;
+    // println!("bit1_t1__ {:?}", bit1_t1.to_biguint());
+    let bit1_t2 = Qx * Rz;
+    let bit1_t3 = Rx - bit1_t2;
+    // println!("t1__ {:?}", bit1_t3.to_biguint());
+    let bit1_t4 = (bit1_t1 * Qx);
+    let bit1_t5 = (bit1_t3 * Qy);
+    let bit1_t6 = bit1_t4 - bit1_t5;
+    let bit1_t7 = -bit1_t1;
+    // println!("ell_coeff_1_0 {:?}", ell_coeff[1][0].to_biguint());
+    // println!("ell_coeff_1_1 {:?}", ell_coeff[1][1].to_biguint());
+    // println!("ell_coeff_1_2 {:?}", ell_coeff[1][2].to_biguint());
+    let bit1_t8 = bit1_t3*bit1_t3;
+    // println!("t2__ {:?}", bit1_t8.to_biguint());
+    let bit1_t9 = bit1_t8 * bit1_t3;
+    // println!("t3__ {:?}", bit1_t9.to_biguint());
+    let bit1_t10 = bit1_t8* Rx;
+    // println!("t4__ {:?}", bit1_t10.to_biguint());
+    let bit1_t11 = bit1_t1 * bit1_t1;
+    let bit1_t12 = bit1_t11 * Rz;
+    let bit1_t13 = (bit1_t10 * Fp::get_fp_from_biguint(BigUint::from(2 as u32)));
+    let bit1_t14 = bit1_t9 - bit1_t13;
+    let bit1_t15 = bit1_t14 + bit1_t12;
+    // println!("t5__ {:?}", bit1_t15.to_biguint());
+    let bit1_t16 = (bit1_t10 - bit1_t15);
+    let bit1_t17 = bit1_t16 * bit1_t1;
+    let bit1_t18 = bit1_t9 * Ry;
+    let new_Rx = bit1_t3 * bit1_t15;
+    let new_Ry = bit1_t17 - bit1_t18;
+    let new_Rz = Rz * bit1_t9;
+
+    vec![
+        new_Rx, new_Ry, new_Rz, bit1_t0, bit1_t1, bit1_t2, bit1_t3,
+        bit1_t4, bit1_t5, bit1_t6, bit1_t7, bit1_t8, bit1_t9, bit1_t10,
+        bit1_t11, bit1_t12, bit1_t13, bit1_t14, bit1_t15, bit1_t16, bit1_t17, bit1_t18
+    ]
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Fp(pub(crate) [u32; 12]);
 
@@ -1242,29 +1282,43 @@ pub fn calc_pairing_precomp(x: Fp2, y: Fp2, z: Fp2) -> Vec<[Fp2; 3]> {
         // println!("Rz_ {:?}", Rz.to_biguint());
         // phase 2
         if get_bls_12_381_parameter().bit(i) {
-            let t0 = Ry - (Qy * Rz);
-            // println!("t0__ {:?}", t0.to_biguint());
-            let t1 = Rx - (Qx * Rz);
-            // println!("t1__ {:?}", t1.to_biguint());
+            println!("entered here for i=={}", i);
+            let bit1_t0 = Qy * Rz;
+            let bit1_t1 = Ry - bit1_t0;
+            // println!("bit1_t1__ {:?}", bit1_t1.to_biguint());
+            let bit1_t2 = Qx * Rz;
+            let bit1_t3 = Rx - bit1_t2;
+            // println!("t1__ {:?}", bit1_t3.to_biguint());
+            let bit1_t4 = (bit1_t1 * Qx);
+            let bit1_t5 = (bit1_t3 * Qy);
+            let bit1_t6 = bit1_t4 - bit1_t5;
+            let bit1_t7 = -bit1_t1;
             ell_coeff.push([
-                (t0 * Qx) - (t1 * Qy),
-                -t0,
-                t1
+                bit1_t6,
+                bit1_t7,
+                bit1_t3
             ]);
             // println!("ell_coeff_1_0 {:?}", ell_coeff[1][0].to_biguint());
             // println!("ell_coeff_1_1 {:?}", ell_coeff[1][1].to_biguint());
             // println!("ell_coeff_1_2 {:?}", ell_coeff[1][2].to_biguint());
-            let t2 = t1*t1;
-            // println!("t2__ {:?}", t2.to_biguint());
-            let t3 = t2 * t1;
-            // println!("t3__ {:?}", t3.to_biguint());
-            let t4 = t2* Rx;
-            // println!("t4__ {:?}", t4.to_biguint());
-            let t5 = t3 - (t4 * Fp::get_fp_from_biguint(BigUint::from(2 as u32))) + (t0 * t0 * Rz);
-            // println!("t5__ {:?}", t5.to_biguint());
-            Rx = t1 * t5;
-            Ry = (t4 - t5) * t0 - (t3 * Ry);
-            Rz = Rz * t3;
+            let bit1_t8 = bit1_t3*bit1_t3;
+            // println!("t2__ {:?}", bit1_t8.to_biguint());
+            let bit1_t9 = bit1_t8 * bit1_t3;
+            // println!("t3__ {:?}", bit1_t9.to_biguint());
+            let bit1_t10 = bit1_t8* Rx;
+            // println!("t4__ {:?}", bit1_t10.to_biguint());
+            let bit1_t11 = bit1_t1 * bit1_t1;
+            let bit1_t12 = bit1_t11 * Rz;
+            let bit1_t13 = (bit1_t10 * Fp::get_fp_from_biguint(BigUint::from(2 as u32)));
+            let bit1_t14 = bit1_t9 - bit1_t13;
+            let bit1_t15 = bit1_t14 + bit1_t12;
+            // println!("t5__ {:?}", bit1_t15.to_biguint());
+            Rx = bit1_t3 * bit1_t15;
+            let bit1_t16 = (bit1_t10 - bit1_t15);
+            let bit1_t17 = bit1_t16 * bit1_t1;
+            let bit1_t18 = bit1_t9 * Ry;
+            Ry = bit1_t17 - bit1_t18;
+            Rz = Rz * bit1_t9;
             // println!("Rx__ {:?}", Rx.to_biguint());
             // println!("Ry__ {:?}", Ry.to_biguint());
             // println!("Rz__ {:?}", Rz.to_biguint());
