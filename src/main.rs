@@ -2,7 +2,7 @@ use num_bigint::BigUint;
 use plonky2::{plonk::config::{PoseidonGoldilocksConfig, GenericConfig}, util::timing::{TimingTree, self}};
 use starky::{config::StarkConfig, prover::prove, verifier::verify_stark_proof};
 use plonky2::field::types::Field;
-use crate::{native::{get_u32_vec_from_literal_24, modulus, get_u32_vec_from_literal, Fp2, Fp, mul_Fp2}, fp_mult_starky::FpMultiplicationStark, fp2_mult_starky::Fp2MultiplicationStark, calc_pairing_precomp::PairingPrecompStark};
+use crate::{native::{get_u32_vec_from_literal_24, modulus, get_u32_vec_from_literal, Fp2, Fp, mul_Fp2}, fp_mult_starky::FpMultiplicationStark, fp2_mult_starky::Fp2MultiplicationStark, calc_pairing_precomp::{PairingPrecompStark, ELL_COEFFS_PUBLIC_INPUTS_OFFSET}};
 use starky::util::trace_rows_to_poly_values;
 use std::time::Instant;
 
@@ -112,6 +112,7 @@ fn calc_pairing_precomp() {
         2289409521, 759431638, 3707643405, 216427024, 234777573,
     ];
     stark.generate_trace([x, x], [y, y], [z, z]);
+    let ell_coeffs = native::calc_pairing_precomp(Fp2([Fp(x), Fp(x)]), Fp2([Fp(y), Fp(y)]), Fp2([Fp(z), Fp(z)]));
     let mut public_inputs = Vec::new();
     for e in x.iter().chain(x.iter()) {
         public_inputs.push(F::from_canonical_u32(e.clone()));
@@ -122,7 +123,16 @@ fn calc_pairing_precomp() {
     for e in z.iter().chain(z.iter()) {
         public_inputs.push(F::from_canonical_u32(e.clone()));
     }
-    assert_eq!(public_inputs.len(), PUBLIC_INPUTS);
+    for cs in ell_coeffs.iter() {
+        for fp2 in cs.iter() {
+            for fp in fp2.0.iter() {
+                for e in fp.0.iter() {
+                    public_inputs.push(F::from_canonical_u32(*e));
+                }
+            }
+        }
+    }
+    assert_eq!(public_inputs.len(), calc_pairing_precomp::PUBLIC_INPUTS);
     // println!("constraint_degree: {:?}", stark.constraint_degree());
     let trace_poly_values = trace_rows_to_poly_values(stark.trace.clone());
     let t = Instant::now();

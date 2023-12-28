@@ -182,9 +182,10 @@ pub const BIT1_SELECTOR_OFFSET: usize = FIRST_ROW_SELECTOR_OFFSET + 1;
 pub const RX_OFFSET: usize = BIT1_SELECTOR_OFFSET + 1;
 pub const RY_OFFSET: usize = RX_OFFSET + 24;
 pub const RZ_OFFSET: usize = RY_OFFSET + 24;
+pub const ELL_COEFFS_IDX_OFFSET: usize = RZ_OFFSET + 24;
 
 // bit0 offsets
-pub const T0_CALC_OFFSET: usize = RZ_OFFSET + 24;
+pub const T0_CALC_OFFSET: usize = ELL_COEFFS_IDX_OFFSET + 68;
 pub const T1_CALC_OFFSET: usize = T0_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
 pub const X0_CALC_OFFSET: usize = T1_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
 pub const T2_CALC_OFFSET: usize = X0_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
@@ -209,7 +210,7 @@ pub const NEW_RZ_OFFSET: usize = NEW_RY_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRA
 pub const BIT0_TOTAL_COLUMNS: usize = NEW_RZ_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
 
 // bit1 offsets
-pub const BIT1_T0_CALC_OFFSET: usize = RZ_OFFSET + 24;
+pub const BIT1_T0_CALC_OFFSET: usize = ELL_COEFFS_IDX_OFFSET + 68;
 pub const BIT1_T1_CALC_OFFSET: usize = BIT1_T0_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
 pub const BIT1_T2_CALC_OFFSET: usize = BIT1_T1_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL) * 2;
 pub const BIT1_T3_CALC_OFFSET: usize = BIT1_T2_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
@@ -237,7 +238,7 @@ pub const TOTAL_COLUMNS: usize = BIT1_TOTAL_COLUMNS;
 // pub const TOTAL_COLUMNS: usize = BIT0_TOTAL_COLUMNS;
 
 pub const COLUMNS: usize = TOTAL_COLUMNS;
-pub const PUBLIC_INPUTS: usize = 72;
+pub const PUBLIC_INPUTS: usize = 72 + 68*24*3;
 
 pub const X0_PUBLIC_INPUTS_OFFSET: usize = 0;
 pub const X1_PUBLIC_INPUTS_OFFSET: usize = 12;
@@ -245,6 +246,7 @@ pub const Y0_PUBLIC_INPUTS_OFFSET: usize = 24;
 pub const Y1_PUBLIC_INPUTS_OFFSET: usize = 36;
 pub const Z0_PUBLIC_INPUTS_OFFSET: usize = 48;
 pub const Z1_PUBLIC_INPUTS_OFFSET: usize = 60;
+pub const ELL_COEFFS_PUBLIC_INPUTS_OFFSET: usize = 72;
 
 
 
@@ -744,6 +746,7 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         let (mut Rx, mut Ry, mut Rz) = (Qx, Qy, Qz);
         let mut bit_pos = 62;
         let mut bit1 = false;
+        let num_coeffs = 68;
         for n in 0..(self._num_rows/12 + 1) {
             let start_row = n * 12;
             let end_row = (n+1)*12;
@@ -759,6 +762,9 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
                 self.assign_u32_in_series(row, RZ_OFFSET + 12, &Rz.get_u32_slice()[1]);
                 if bit1 {
                     self.trace[row][BIT1_SELECTOR_OFFSET] = F::ONE;
+                }
+                if n < num_coeffs {
+                    self.trace[row][ELL_COEFFS_IDX_OFFSET + n] = F::ONE;
                 }
             }
             self.trace[start_row][FIRST_ROW_SELECTOR_OFFSET] = F::ONE;
@@ -901,7 +907,7 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
                 Ry = values_1[1];
                 Rz = values_1[2];
                 bit1 = false;
-                bit_pos.checked_sub(1).unwrap_or(0);
+                bit_pos = bit_pos.checked_sub(1).unwrap_or(0);
             }
         }
     }
@@ -2364,6 +2370,85 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for PairingPrecom
                 (P::ONES - next_values[FIRST_ROW_SELECTOR_OFFSET]) *
                 (local_values[RZ_OFFSET + i] - next_values[RZ_OFFSET + i])
             );
+        }
+
+        for idx in 0..68 {
+            for i in 0..12 {
+                yield_constr.constraint(
+                    bit0 *
+                    local_values[ELL_COEFFS_IDX_OFFSET + idx] *
+                    (local_values[X2_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i] -
+                    public_inputs[ELL_COEFFS_PUBLIC_INPUTS_OFFSET + idx*72 + i])
+                );
+                yield_constr.constraint(
+                    bit0 *
+                    local_values[ELL_COEFFS_IDX_OFFSET + idx] *
+                    (local_values[X2_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i] -
+                    public_inputs[ELL_COEFFS_PUBLIC_INPUTS_OFFSET + idx*72 + i + 12])
+                );
+                yield_constr.constraint(
+                    bit0 *
+                    local_values[ELL_COEFFS_IDX_OFFSET + idx] *
+                    (local_values[X4_CALC_OFFSET + X0_Y_REDUCE_OFFSET + REDUCED_OFFSET + i] -
+                    public_inputs[ELL_COEFFS_PUBLIC_INPUTS_OFFSET + idx*72 + i + 24])
+                );
+                yield_constr.constraint(
+                    bit0 *
+                    local_values[ELL_COEFFS_IDX_OFFSET + idx] *
+                    (local_values[X4_CALC_OFFSET + X1_Y_REDUCE_OFFSET + REDUCED_OFFSET + i] -
+                    public_inputs[ELL_COEFFS_PUBLIC_INPUTS_OFFSET + idx*72 + i + 36])
+                );
+                yield_constr.constraint(
+                    bit0 *
+                    local_values[ELL_COEFFS_IDX_OFFSET + idx] *
+                    (local_values[X5_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_Y_OFFSET + i] -
+                    public_inputs[ELL_COEFFS_PUBLIC_INPUTS_OFFSET + idx*72 + i + 48])
+                );
+                yield_constr.constraint(
+                    bit0 *
+                    local_values[ELL_COEFFS_IDX_OFFSET + idx] *
+                    (local_values[X5_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_Y_OFFSET + i] -
+                    public_inputs[ELL_COEFFS_PUBLIC_INPUTS_OFFSET + idx*72 + i + 60])
+                );
+
+
+                yield_constr.constraint(
+                    bit1 *
+                    local_values[ELL_COEFFS_IDX_OFFSET + idx] *
+                    (local_values[BIT1_T6_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i] -
+                    public_inputs[ELL_COEFFS_PUBLIC_INPUTS_OFFSET + idx*72 + i])
+                );
+                yield_constr.constraint(
+                    bit1 *
+                    local_values[ELL_COEFFS_IDX_OFFSET + idx] *
+                    (local_values[BIT1_T6_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i] -
+                    public_inputs[ELL_COEFFS_PUBLIC_INPUTS_OFFSET + idx*72 + i + 12])
+                );
+                yield_constr.constraint(
+                    bit1 *
+                    local_values[ELL_COEFFS_IDX_OFFSET + idx] *
+                    (local_values[BIT1_T7_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_Y_OFFSET + i] -
+                    public_inputs[ELL_COEFFS_PUBLIC_INPUTS_OFFSET + idx*72 + i + 24])
+                );
+                yield_constr.constraint(
+                    bit1 *
+                    local_values[ELL_COEFFS_IDX_OFFSET + idx] *
+                    (local_values[BIT1_T7_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_Y_OFFSET + i] -
+                    public_inputs[ELL_COEFFS_PUBLIC_INPUTS_OFFSET + idx*72 + i + 36])
+                );
+                yield_constr.constraint(
+                    bit1 *
+                    local_values[ELL_COEFFS_IDX_OFFSET + idx] *
+                    (local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i] -
+                    public_inputs[ELL_COEFFS_PUBLIC_INPUTS_OFFSET + idx*72 + i + 48])
+                );
+                yield_constr.constraint(
+                    bit1 *
+                    local_values[ELL_COEFFS_IDX_OFFSET + idx] *
+                    (local_values[BIT1_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL + FP_SINGLE_REDUCED_OFFSET + i] -
+                    public_inputs[ELL_COEFFS_PUBLIC_INPUTS_OFFSET + idx*72 + i + 60])
+                );
+            }
         }
 
 
