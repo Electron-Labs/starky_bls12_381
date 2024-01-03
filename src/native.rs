@@ -651,6 +651,10 @@ impl Fp6 {
         ].concat().try_into().unwrap())
     }
 
+    pub fn get_u32_slice(&self) -> [[u32; 12]; 6] {
+        self.0.iter().map(|f| f.0).collect::<Vec<[u32; 12]>>().try_into().unwrap()
+    }
+
     pub fn print(&self) {
         // println!("--- Printing Fp6 ---");
         // for i in 0..self.0.len() {
@@ -819,7 +823,7 @@ impl Fp6 {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Fp12([Fp; 12]);
+pub struct Fp12(pub(crate) [Fp; 12]);
 
 impl Fp12 {
     pub fn one() -> Fp12 {
@@ -912,27 +916,23 @@ pub fn add_fp12(x: Fp12, y: Fp12) -> Fp12 {
 }
 
 pub fn mul_fp_12(x: Fp12, y: Fp12) -> Fp12 {
-    let x_c0 = Fp6(x.0[0..6].to_vec().try_into().unwrap());
-    let x_c1 = Fp6(x.0[6..12].to_vec().try_into().unwrap());
-    let y_c0 = Fp6(y.0[0..6].to_vec().try_into().unwrap());
-    let y_c1 = Fp6(y.0[6..12].to_vec().try_into().unwrap());
+    let c0 = Fp6(x.0[0..6].try_into().unwrap());
+    let c1 = Fp6(x.0[6..12].try_into().unwrap());
+    let r0 = Fp6(y.0[0..6].try_into().unwrap());
+    let r1 = Fp6(y.0[6..12].try_into().unwrap());
 
-    let aa = mul_Fp6(x_c0 , y_c0);
-    let bb = mul_Fp6(x_c1,y_c1);
-    let o =add_Fp6(y_c0 ,y_c1);
-    let c1 = add_Fp6(x_c1 , x_c0);
-    let c1 = mul_Fp6(c1 ,o);
-    let c1 = sub_Fp6(c1, aa);
-    let c1 = sub_Fp6(c1,bb);
-    let c0 = mul_by_nonresidue(bb.0);
-    let c0 = add_Fp6(c0 , aa);
+    let t0 = c0*r0;
+    let t1 = c1*r1;
+    let t2 = mul_by_nonresidue(t1.0);
+    let x = t0+t2;
 
-    Fp12(
-        [
-            c0.0[0], c0.0[1], c0.0[2], c0.0[3], c0.0[4], c0.0[5],
-            c1.0[0], c1.0[1], c1.0[2], c1.0[3], c1.0[4], c1.0[5]
-        ]
-    )
+    let t3 = (c0+c1);
+    let t4 = (r0+r1);
+    let t5 = t3*t4;
+    let t6 = t5-t0;
+    let y = t6-t1;
+
+    Fp12([x.0, y.0].concat().try_into().unwrap())
 }
 
 impl Fp2 {
