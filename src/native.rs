@@ -632,7 +632,7 @@ pub fn mul_Fp2(x: Fp2, y: Fp2) -> Fp2 {
 // }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Fp6([Fp;6]);
+pub struct Fp6(pub(crate) [Fp;6]);
 
 impl Fp6 {
     pub fn invert(&self) -> Self {
@@ -742,37 +742,42 @@ Fp6 -> Fp2(c0), c1, c2
 pub fn mul_Fp6(x: Fp6, y: Fp6) -> Fp6 {
     let X = x.0;
     let Y = y.0;
+    let c0 = Fp2([X[0], X[1]]);
+    let c1 = Fp2([X[2], X[3]]);
+    let c2 = Fp2([X[4], X[5]]);
 
-    let b10_p_b11 = add_fp(Y[2],Y[3]);//b.c1.c0 + b.c1.c1;
-    let b10_m_b11 = sub_fp(Y[2], Y[3]);//b.c1.c0 - b.c1.c1;
-    let b20_p_b21 = add_fp(Y[4], Y[5]);//b.c2.c0 + b.c2.c1;
-    let b20_m_b21 = sub_fp(Y[4], Y[5]);
-    Fp6([
-        sum_of_products(
-            vec![X[0], negate_fp(X[1]), X[2], negate_fp(X[3]), X[4], negate_fp(X[5])],
-            vec![Y[0], Y[1], b20_m_b21, b20_p_b21, b10_m_b11, b10_p_b11],
-        ),
-        sum_of_products(
-            vec![X[0], X[1], X[2], X[3], X[4], X[5]],
-            vec![Y[1], Y[0], b20_p_b21, b20_m_b21, b10_p_b11, b10_m_b11],
-        ),
-        sum_of_products(
-            vec![X[0], negate_fp(X[1]), X[2], negate_fp(X[3]), X[4], negate_fp(X[5])],
-            vec![Y[2], Y[3], Y[0], Y[1], b20_m_b21, b20_p_b21],
-        ),
-        sum_of_products(
-            vec![X[0], X[1], X[2], X[3], X[4], X[5]],
-            vec![Y[3], Y[2], Y[1], Y[0], b20_p_b21, b20_m_b21],
-        ),
-        sum_of_products(
-            vec![X[0], negate_fp(X[1]), X[2], negate_fp(X[3]), X[4], negate_fp(X[5])],
-            vec![Y[4], Y[5], Y[2], Y[3], Y[0], Y[1]],
-        ),
-        sum_of_products(
-            vec![X[0], X[1], X[2], X[3], X[4], X[5]],
-            vec![Y[5], Y[4], Y[3], Y[2], Y[1], Y[0]],
-        ),
-    ])
+    let r0 = Fp2([Y[0], Y[1]]);
+    let r1 = Fp2([Y[2], Y[3]]);
+    let r2 = Fp2([Y[4], Y[5]]);
+
+    let t0 = c0*r0;
+    let t1 = c1*r1;
+    let t2 = c2*r2;
+
+    let t3 = c1+c2;
+    let t4 = r1+r2;
+    let t5 = t3*t4;
+    let t6 = t5-t1;
+    let t7 = t6-t2;
+    let t8 = t7.mul_by_nonresidue();
+    let x = t8+t0;
+
+    let t9 = c0+c1;
+    let t10 = r0+r1;
+    let t11 = t9*t10;
+    let t12 = t11-t0;
+    let t13 = t12-t1;
+    let t14 = t2.mul_by_nonresidue();
+    let y = t13+t14;
+
+    let t15 = c0+c2;
+    let t16 = r0+r2;
+    let t17 = t15*t16;
+    let t18 = t17-t0;
+    let t19 = t18-t2;
+    let z = t19+t1;
+
+    Fp6([x.0[0], x.0[1], y.0[0], y.0[1], z.0[0], z.0[1]])
 }
 
 pub fn mul_by_nonresidue(x: [Fp; 6]) -> Fp6 {
