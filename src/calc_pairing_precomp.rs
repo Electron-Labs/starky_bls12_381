@@ -1623,6 +1623,19 @@ fn add_fp2_mul_constraints<
     // for i in 0..12 {
     //     yield_constr.constraint_transition(local_values[start_col + X_0_Y_0_MULTIPLICATION_OFFSET + X_INPUT_OFFSET + i])
     // }
+    for i in 0..24 {
+        yield_constr.constraint_transition(
+            bit_selector *
+            local_values[start_col + FP2_FP2_SELECTOR_OFFSET] *
+            (local_values[start_col + FP2_FP2_X_INPUT_OFFSET + i] - next_values[start_col + FP2_FP2_X_INPUT_OFFSET + i])
+        );
+        yield_constr.constraint_transition(
+            bit_selector *
+            local_values[start_col + FP2_FP2_SELECTOR_OFFSET] *
+            (local_values[start_col + FP2_FP2_Y_INPUT_OFFSET + i] - next_values[start_col + FP2_FP2_Y_INPUT_OFFSET + i])
+        );
+    }
+
     for i in 0..12 {
         yield_constr.constraint(bit_selector *
             local_values[start_col + FP2_FP2_SELECTOR_OFFSET] *
@@ -1837,6 +1850,20 @@ pub fn add_fp2_fp_mul_constraints<
     FE: FieldExtension<D2, BaseField = F>,
     P: PackedField<Scalar = FE>,
 {
+    for i in 0..12 {
+        for j in 0..2 {
+            yield_constr.constraint_transition(
+                bit_selector *
+                local_values[start_col + FP2_FP_MUL_SELECTOR_OFFSET] *
+                (local_values[start_col + FP2_FP_X_INPUT_OFFSET + j*12 + i] - next_values[start_col + FP2_FP_X_INPUT_OFFSET + j*12 + i])
+            );
+        }
+        yield_constr.constraint_transition(
+            bit_selector *
+            local_values[start_col + FP2_FP_MUL_SELECTOR_OFFSET] *
+            (local_values[start_col + FP2_FP_Y_INPUT_OFFSET + i] - next_values[start_col + FP2_FP_Y_INPUT_OFFSET + i])
+        );
+    }
     // constrain inputs to multiplication
     for i in 0..12 {
         yield_constr.constraint_transition(
@@ -1906,6 +1933,13 @@ pub fn add_multiply_by_b_constraints<
     FE: FieldExtension<D2, BaseField = F>,
     P: PackedField<Scalar = FE>,
 {
+    for i in 0..24 {
+        yield_constr.constraint_transition(
+            bit_selector *
+            local_values[start_col + MULTIPLY_B_SELECTOR_OFFSET] *
+            (local_values[start_col + MULTIPLY_B_X_OFFSET + i] - next_values[start_col + MULTIPLY_B_X_OFFSET + i])
+        );
+    }
     for i in 0..12 {
         yield_constr.constraint(
             bit_selector *
