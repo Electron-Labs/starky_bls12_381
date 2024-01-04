@@ -1371,6 +1371,17 @@ fn add_fp2_mul_constraints<
     // for i in 0..12 {
     //     yield_constr.constraint_transition(local_values[start_col + X_0_Y_0_MULTIPLICATION_OFFSET + X_INPUT_OFFSET + i])
     // }
+    for i in 0..24 {
+        yield_constr.constraint_transition(
+            local_values[start_col + FP2_FP2_SELECTOR_OFFSET] *
+            (local_values[start_col + FP2_FP2_X_INPUT_OFFSET + i] - next_values[start_col + FP2_FP2_X_INPUT_OFFSET + i])
+        );
+        yield_constr.constraint_transition(
+            local_values[start_col + FP2_FP2_SELECTOR_OFFSET] *
+            (local_values[start_col + FP2_FP2_Y_INPUT_OFFSET + i] - next_values[start_col + FP2_FP2_Y_INPUT_OFFSET + i])
+        );
+    }
+
     for i in 0..12 {
         yield_constr.constraint(
             local_values[start_col + FP2_FP2_SELECTOR_OFFSET] *
