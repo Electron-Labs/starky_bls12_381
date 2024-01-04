@@ -201,7 +201,8 @@ pub const FP6_SUBTRACTION_2_OFFSET: usize = FP6_SUBTRACTION_1_OFFSET + FP2_SUBTR
 pub const FP6_SUBTRACTION_TOTAL: usize = FP6_SUBTRACTION_2_OFFSET + FP2_SUBTRACTION_TOTAL;
 
 // FP12 multiplication offsets
-pub const FP12_MUL_X_INPUT_OFFSET: usize = 0;
+pub const FP12_MUL_SELECTOR_OFFSET: usize = 0;
+pub const FP12_MUL_X_INPUT_OFFSET: usize = FP12_MUL_SELECTOR_OFFSET + 1;
 pub const FP12_MUL_Y_INPUT_OFFSET: usize = FP12_MUL_X_INPUT_OFFSET + 24*3*2;
 pub const FP12_MUL_T0_CALC_OFFSET: usize = FP12_MUL_Y_INPUT_OFFSET + 24*3*2;
 pub const FP12_MUL_T1_CALC_OFFSET: usize = FP12_MUL_T0_CALC_OFFSET + FP6_MUL_TOTAL_COLUMNS;
@@ -1499,6 +1500,16 @@ fn add_fp2_mul_constraints<
     // for i in 0..12 {
     //     yield_constr.constraint_transition(local_values[start_col + X_0_Y_0_MULTIPLICATION_OFFSET + X_INPUT_OFFSET + i])
     // }
+    for i in 0..24 {
+        yield_constr.constraint_transition(
+            local_values[start_col + FP2_FP2_SELECTOR_OFFSET] *
+            (local_values[start_col + FP2_FP2_X_INPUT_OFFSET + i] - next_values[start_col + FP2_FP2_X_INPUT_OFFSET + i])
+        );
+        yield_constr.constraint_transition(
+            local_values[start_col + FP2_FP2_SELECTOR_OFFSET] *
+            (local_values[start_col + FP2_FP2_Y_INPUT_OFFSET + i] - next_values[start_col + FP2_FP2_Y_INPUT_OFFSET + i])
+        );
+    }
     for i in 0..12 {
         yield_constr.constraint(
             local_values[start_col + FP2_FP2_SELECTOR_OFFSET] *
@@ -2697,6 +2708,17 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for Fp12MulStark<
                     public_inputs[PUBLIC_INPUT_SUM_OFFSET + i*12 + j + 24*3])
                 );
             }
+        }
+
+        for i in 0..24*3*2 {
+            yield_constr.constraint_transition(
+                local_values[FP12_MUL_SELECTOR_OFFSET] *
+                (local_values[FP12_MUL_X_INPUT_OFFSET + i] - next_values[FP12_MUL_X_INPUT_OFFSET + i])
+            );
+            yield_constr.constraint_transition(
+                local_values[FP12_MUL_SELECTOR_OFFSET] *
+                (local_values[FP12_MUL_Y_INPUT_OFFSET + i] - next_values[FP12_MUL_Y_INPUT_OFFSET + i])
+            );
         }
 
         // T0
