@@ -800,13 +800,24 @@ impl Fp6 {
         let c0 = Fp2(self.0[0..2].to_vec().try_into().unwrap());
         let c1 = Fp2(self.0[2..4].to_vec().try_into().unwrap());
         let c2 = Fp2(self.0[4..6].to_vec().try_into().unwrap());
-        let t0 = c0 * b0;
-        let t1 = c1 * b1;
-        let ans1 = ((c1 + c2) * b1 - t1).mul_by_nonresidue() + t0;  
-        let ans2 = (b0 + b1) * (c0 + c1) - t0 - t1;
-        let ans3 = (c0 + c2) * b0 - t0 + t1;
+
+        let t0 = c0*b0;
+        let t1 = c1*b1;
+
+        let t2 = c2*b1;
+        let t3 = t2.mul_by_nonresidue();
+        let x = t3+t0;
+
+        let t4 = b0+b1;
+        let t5 = c0+c1;
+        let t6 = t4*t5;
+        let t7 = t6-t0;
+        let y = t7-t1;
+
+        let t8 = c2*b0;
+        let z = t8+t1;
         Fp6([
-            ans1.0, ans2.0, ans3.0
+            x.0, y.0, z.0
         ].concat().try_into().unwrap())
     }
 
@@ -814,10 +825,17 @@ impl Fp6 {
         let c0 = Fp2(self.0[0..2].to_vec().try_into().unwrap());
         let c1 = Fp2(self.0[2..4].to_vec().try_into().unwrap());
         let c2 = Fp2(self.0[4..6].to_vec().try_into().unwrap());
+
+        let t0 = c2*b1;
+        let x = t0.mul_by_nonresidue();
+
+        let y = c0*b1;
+
+        let z = c1*b1;
         Fp6([
-            (c2*b1).mul_by_nonresidue().0,
-            (c0*b1).0,
-            (c1*b1).0,
+            x.0,
+            y.0,
+            z.0,
         ].concat().try_into().unwrap())
     }
 }
@@ -1099,11 +1117,16 @@ impl Fp12 {
         let c1 = Fp6(self.0[6..12].to_vec().try_into().unwrap());
         let t0 = c0.multiplyBy01(o0, o1);
         let t1 = c1.multiplyBy1(o4);
-        let a = add_Fp6(mul_by_nonresidue(t1.0),t0);
-        // (c1 + c0) * [o0, o1+o4] - T0 - T1
-        let b = sub_Fp6(sub_Fp6(add_Fp6(c1, c0).multiplyBy01(o0, o1+o4),t0),t1);
+        let t2 = mul_by_nonresidue(t1.0);
+        let x = t2+t0;
+
+        let t3 = c1+c0;
+        let t4 = o1+o4;
+        let t5 = t3.multiplyBy01(o0, t4);
+        let t6 = t5-t0;
+        let y = t6-t1;
         Fp12([
-            a.0,b.0
+            x.0,y.0
         ].concat().try_into().unwrap())
     }
 

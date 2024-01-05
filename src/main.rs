@@ -2,7 +2,7 @@ use num_bigint::BigUint;
 use plonky2::{plonk::config::{PoseidonGoldilocksConfig, GenericConfig}, util::timing::{TimingTree, self}};
 use starky::{config::StarkConfig, prover::prove, verifier::verify_stark_proof};
 use plonky2::field::types::Field;
-use crate::{native::{get_u32_vec_from_literal_24, modulus, get_u32_vec_from_literal, Fp2, Fp, mul_Fp2, Fp6, mul_Fp6, Fp12}, fp_mult_starky::FpMultiplicationStark, fp2_mult_starky::Fp2MultiplicationStark, calc_pairing_precomp::{PairingPrecompStark, ELL_COEFFS_PUBLIC_INPUTS_OFFSET}, fp6_mult_starky::Fp6MulStark, fp12_mult_starky::Fp12MulStark};
+use crate::{native::{get_u32_vec_from_literal_24, modulus, get_u32_vec_from_literal, Fp2, Fp, mul_Fp2, Fp6, mul_Fp6, Fp12}, fp_mult_starky::FpMultiplicationStark, fp2_mult_starky::Fp2MultiplicationStark, calc_pairing_precomp::{PairingPrecompStark, ELL_COEFFS_PUBLIC_INPUTS_OFFSET}, fp6_mult_starky::Fp6MulStark, fp12_mult_starky::Fp12MulStark, multiply_by_014::MultiplyBy014Stark};
 use starky::util::trace_rows_to_poly_values;
 use std::time::Instant;
 
@@ -14,6 +14,7 @@ pub mod fp2_mult_starky;
 pub mod calc_pairing_precomp;
 pub mod fp6_mult_starky;
 pub mod fp12_mult_starky;
+pub mod multiply_by_014;
 
 pub const PUBLIC_INPUTS: usize = 72;
 
@@ -231,8 +232,69 @@ fn fp12_main() {
     verify_stark_proof(s_, proof.unwrap(), &config).unwrap();
 }
 
+fn multiply_by_014_main() {
+    const D: usize = 2;
+    type C = PoseidonGoldilocksConfig;
+    type F = <C as GenericConfig<D>>::F;
+    type S = MultiplyBy014Stark<F, D>;
+
+    let config = StarkConfig::standard_fast_config();
+    let mut stark = S::new(16);
+    let s_ = stark.clone();
+    let x: [u32; 12] = [
+        1550366109, 1913070572, 760847606, 999580752, 3273422733, 182645169, 1634881460,
+        1043400770, 1526865253, 1101868890, 3712845450, 132602617,
+    ];
+    let y: [u32; 12] = [
+        3621225457, 1284733598, 2592173602, 2778433514, 3415298024, 3512038034, 2556930252,
+        2289409521, 759431638, 3707643405, 216427024, 234777573,
+    ];
+    let x_fp12 = Fp12([Fp(x); 12]);
+    let y_fp2 = Fp2([Fp(y); 2]);
+    let res = x_fp12.multiplyBy014(y_fp2, y_fp2, y_fp2);
+    let s = Instant::now();
+    stark.generate_trace(x_fp12, y_fp2, y_fp2, y_fp2);
+    let mut public_inputs = Vec::new();
+    for fp in x_fp12.0.iter() {
+        for e in fp.0.iter() {
+            public_inputs.push(F::from_canonical_u32(*e));
+        }
+    }
+    for fp in y_fp2.0.iter() {
+        for e in fp.0.iter() {
+            public_inputs.push(F::from_canonical_u32(*e));
+        }
+    }
+    for fp in y_fp2.0.iter() {
+        for e in fp.0.iter() {
+            public_inputs.push(F::from_canonical_u32(*e));
+        }
+    }
+    for fp in y_fp2.0.iter() {
+        for e in fp.0.iter() {
+            public_inputs.push(F::from_canonical_u32(*e));
+        }
+    }
+    for fp in res.0.iter() {
+        for e in fp.0.iter() {
+            public_inputs.push(F::from_canonical_u32(*e));
+        }
+    }
+    assert_eq!(public_inputs.len(), multiply_by_014::PUBLIC_INPUTS);
+    let trace_poly_values = trace_rows_to_poly_values(stark.trace.clone());
+    let proof = prove::<F, C, S, D>(
+        stark,
+        &config,
+        trace_poly_values,
+        &public_inputs,
+        &mut TimingTree::default(),
+    );
+    println!("Time taken to gen proof {:?}", s.elapsed());
+    verify_stark_proof(s_, proof.unwrap(), &config).unwrap();
+}
+
 fn main() {
-    let test_fp_which: usize = 5;
+    let test_fp_which: usize = 6;
     if test_fp_which == 1 {
         fp1_main();
     } else if test_fp_which == 2 {
@@ -243,5 +305,7 @@ fn main() {
         fp6_main();
     } else if test_fp_which == 5 {
         fp12_main();
+    } else if test_fp_which == 6 {
+        multiply_by_014_main();
     }
 }
