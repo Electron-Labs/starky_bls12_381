@@ -11,10 +11,10 @@ use plonky2::{
     },
     hash::hash_types::RichField,
     iop::ext_target::ExtensionTarget,
-    util::transpose,
+    util::transpose, plonk::circuit_builder::CircuitBuilder,
 };
 use starky::{
-    constraint_consumer::ConstraintConsumer,
+    constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer},
     evaluation_frame::{StarkEvaluationFrame, StarkFrame},
     stark::Stark,
 };
@@ -1055,6 +1055,34 @@ pub fn add_multiplication_constraints<
         )
     }
     // yield_constr.constraint_transition(local_values[start_col + MULTIPLICATION_SELECTOR_OFFSET] * (next_values[start_col + SUM_OFFSET + 24] - next_values[start_col + SUM_CARRIES_OFFSET + 23]));
+}
+
+pub fn add_multiplication_constraints_ext<
+    F: RichField + Extendable<D>,
+    const D: usize,
+>(
+    builder: &mut CircuitBuilder<F, D>,
+    yield_constr: &mut RecursiveConstraintConsumer<F, D>,
+    local_values: &[ExtensionTarget<D>],
+    next_values: &[ExtensionTarget<D>],
+    start_col: usize,
+    bit_selector: ExtensionTarget<D>,
+) {
+    for i in 0..12 {
+        let tmp = builder.mul_extension(bit_selector, local_values[start_col + MULTIPLICATION_SELECTOR_OFFSET]);
+        let c1 = builder.sub_extension(
+            local_values[start_col + X_INPUT_OFFSET + i],
+            next_values[start_col + X_INPUT_OFFSET + i],
+        );
+        let c1 = builder.mul_extension(tmp, c1);
+        yield_constr.constraint_transition(builder, c1);
+        let c2 = builder.sub_extension(
+            local_values[start_col + Y_INPUT_OFFSET + i],
+            next_values[start_col + Y_INPUT_OFFSET + i]
+        );
+        let c2 = builder.mul_extension(tmp, c2);
+        yield_constr.constraint_transition(builder, c2);
+    }
 }
 
 pub fn add_addition_constraints<
