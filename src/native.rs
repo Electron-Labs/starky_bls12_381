@@ -877,6 +877,10 @@ impl Fp12 {
         }
         ans
     }
+
+    pub fn get_u32_slice(&self) -> [[u32; 12]; 12] {
+        self.0.iter().map(|f| f.0).collect::<Vec<[u32; 12]>>().try_into().unwrap()
+    }
 }
 
 impl Add for Fp12 {

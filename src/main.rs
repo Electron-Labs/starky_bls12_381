@@ -2,7 +2,7 @@ use num_bigint::BigUint;
 use plonky2::{plonk::config::{PoseidonGoldilocksConfig, GenericConfig}, util::timing::{TimingTree, self}};
 use starky::{config::StarkConfig, prover::prove, verifier::verify_stark_proof};
 use plonky2::field::types::Field;
-use crate::{native::{get_u32_vec_from_literal_24, modulus, get_u32_vec_from_literal, Fp2, Fp, mul_Fp2, Fp6, mul_Fp6, Fp12}, fp_mult_starky::FpMultiplicationStark, fp2_mult_starky::Fp2MultiplicationStark, calc_pairing_precomp::{PairingPrecompStark, ELL_COEFFS_PUBLIC_INPUTS_OFFSET}, fp6_mult_starky::Fp6MulStark, fp12_mult_starky::Fp12MulStark, multiply_by_014::MultiplyBy014Stark};
+use crate::{native::{get_u32_vec_from_literal_24, modulus, get_u32_vec_from_literal, Fp2, Fp, mul_Fp2, Fp6, mul_Fp6, Fp12}, fp_mult_starky::FpMultiplicationStark, fp2_mult_starky::Fp2MultiplicationStark, calc_pairing_precomp::{PairingPrecompStark, ELL_COEFFS_PUBLIC_INPUTS_OFFSET}, fp6_mult_starky::Fp6MulStark, fp12_mult_starky::Fp12MulStark, multiply_by_014::MultiplyBy014Stark, miller_loop::MillerLoopStark};
 use starky::util::trace_rows_to_poly_values;
 use std::time::Instant;
 
@@ -15,6 +15,7 @@ pub mod calc_pairing_precomp;
 pub mod fp6_mult_starky;
 pub mod fp12_mult_starky;
 pub mod multiply_by_014;
+pub mod miller_loop;
 
 pub const PUBLIC_INPUTS: usize = 72;
 
@@ -293,8 +294,60 @@ fn multiply_by_014_main() {
     verify_stark_proof(s_, proof.unwrap(), &config).unwrap();
 }
 
+fn miller_loop_main() {
+    const D: usize = 2;
+    type C = PoseidonGoldilocksConfig;
+    type F = <C as GenericConfig<D>>::F;
+    type S = MillerLoopStark<F, D>;
+
+    let config = StarkConfig::standard_fast_config();
+    let mut stark = S::new(1024);
+    let s_ = stark.clone();
+    let x = Fp([1550366109, 1913070572, 760847606, 999580752, 3273422733, 182645169, 1634881460, 1043400770, 1526865253, 1101868890, 3712845450, 132602617]);
+    let y = Fp([673719994, 1835763041, 382898653, 2031122452, 723494459, 2514182158, 1528654322, 3691097491, 369601280, 1847427497, 748256393, 201500165]);
+    let q_x = Fp2([Fp([1115400077, 734036635, 2658976793, 3446373348, 3797461211, 2799729988, 1086715089, 1766116042, 3720719530, 4214563288, 2211874409, 287824937]), Fp([4070035387, 3598430679, 2371795623, 2598602036, 314293284, 3104159902, 3828298491, 1770882328, 1026148559, 2003704675, 804131021, 382850433])]);
+    let q_y = Fp2([Fp([3944640261, 440162500, 3767697757, 767512216, 3185360355, 1355179671, 2310853452, 2890628660, 2539693039, 3306767406, 473197245, 198293246]), Fp([920955909, 775806582, 2117093864, 286632291, 2248224021, 4208799968, 2272086148, 4009382258, 291945614, 2017047933, 1541154483, 220533456])]);
+    let q_z = Fp2([Fp([2780158026, 2572579871, 3558563268, 1947800745, 1784566622, 912901049, 1766882808, 1286945791, 2204464567, 728083964, 3377958885, 227852528]), Fp([1492897660, 2845803056, 3990009560, 3332584519, 1144621723, 1049137482, 2386536189, 2220905202, 28647458, 3875714686, 701911767, 391244403])]);
+    let s = Instant::now();
+    let ell_coeffs = native::calc_pairing_precomp(q_x, q_y, q_z);
+    let res = native::miller_loop(x, y, q_x, q_y, q_z);
+    let mut public_inputs = Vec::<F>::new();
+    for e in x.0.iter() {
+        public_inputs.push(F::from_canonical_u32(*e));
+    }
+    for e in y.0.iter() {
+        public_inputs.push(F::from_canonical_u32(*e));
+    }
+    for coeff in ell_coeffs.iter() {
+        for f2 in coeff.iter() {
+            for f in f2.0.iter() {
+                for e in f.0.iter() {
+                    public_inputs.push(F::from_canonical_u32(*e));
+                }
+            }
+        }
+    }
+    for f in res.0.iter() {
+        for e in f.0.iter() {
+            public_inputs.push(F::from_canonical_u32(*e));
+        }
+    }
+    assert_eq!(public_inputs.len(), miller_loop::PUBLIC_INPUTS);
+    stark.generate_trace(x, y, ell_coeffs);
+    let trace_poly_values = trace_rows_to_poly_values(stark.trace.clone());
+    let proof = prove::<F, C, S, D>(
+        stark,
+        &config,
+        trace_poly_values,
+        &public_inputs,
+        &mut TimingTree::default(),
+    );
+    println!("Time taken to gen proof {:?}", s.elapsed());
+    verify_stark_proof(s_, proof.unwrap(), &config).unwrap();
+}
+
 fn main() {
-    let test_fp_which: usize = 6;
+    let test_fp_which: usize = 7;
     if test_fp_which == 1 {
         fp1_main();
     } else if test_fp_which == 2 {
@@ -307,5 +360,7 @@ fn main() {
         fp12_main();
     } else if test_fp_which == 6 {
         multiply_by_014_main();
+    } else if test_fp_which == 7 {
+        miller_loop_main();
     }
 }

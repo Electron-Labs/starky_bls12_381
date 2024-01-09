@@ -2213,7 +2213,7 @@ pub fn add_fp6_multiplication_constraints<F: RichField + Extendable<D>,
         );
         yield_constr.constraint_transition(
             local_values[start_col + FP6_MUL_SELECTOR_OFFSET] *
-            local_values[start_col + FP6_MUL_Y_INPUT_OFFSET + i] - next_values[start_col + FP6_MUL_Y_INPUT_OFFSET + i]
+            (local_values[start_col + FP6_MUL_Y_INPUT_OFFSET + i] - next_values[start_col + FP6_MUL_Y_INPUT_OFFSET + i])
         );
     }
 
@@ -3519,7 +3519,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for MultiplyBy014
     }
 
     fn constraint_degree(&self) -> usize {
-        3
+        2
     }
 }
 
