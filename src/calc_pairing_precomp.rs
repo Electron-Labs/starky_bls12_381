@@ -1368,30 +1368,30 @@ pub fn add_subtraction_fp_constraints<
     FE: FieldExtension<D2, BaseField = F>,
     P: PackedField<Scalar = FE>,
 {
-    // for j in 0..12 {
-    //     if j == 0 {
-    //         yield_constr.constraint(
-    //             bit_selector *
-    //             local_values[start_col + FP_SUBTRACTION_CHECK_OFFSET]
-    //                 * (local_values[start_col + FP_SUBTRACTION_DIFF_OFFSET + j]
-    //                     + local_values[start_col + FP_SUBTRACTION_Y_OFFSET + j]
-    //                     - (local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j]
-    //                         * FE::from_canonical_u64(1 << 32))
-    //                     - local_values[start_col + FP_SUBTRACTION_X_OFFSET + j]),
-    //         )
-    //     } else {
-    //         yield_constr.constraint(
-    //             bit_selector *
-    //             local_values[start_col + FP_SUBTRACTION_CHECK_OFFSET]
-    //                 * (local_values[start_col + FP_SUBTRACTION_DIFF_OFFSET + j]
-    //                     + local_values[start_col + FP_SUBTRACTION_Y_OFFSET + j]
-    //                     + local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j - 1]
-    //                     - (local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j]
-    //                         * FE::from_canonical_u64(1 << 32))
-    //                     - local_values[start_col + FP_SUBTRACTION_X_OFFSET + j]),
-    //         )
-    //     }
-    // }
+    for j in 0..12 {
+        if j == 0 {
+            yield_constr.constraint(
+                bit_selector *
+                local_values[start_col + FP_SUBTRACTION_CHECK_OFFSET]
+                    * (local_values[start_col + FP_SUBTRACTION_DIFF_OFFSET + j]
+                        + local_values[start_col + FP_SUBTRACTION_Y_OFFSET + j]
+                        - (local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j]
+                            * FE::from_canonical_u64(1 << 32))
+                        - local_values[start_col + FP_SUBTRACTION_X_OFFSET + j]),
+            )
+        } else {
+            yield_constr.constraint(
+                bit_selector *
+                local_values[start_col + FP_SUBTRACTION_CHECK_OFFSET]
+                    * (local_values[start_col + FP_SUBTRACTION_DIFF_OFFSET + j]
+                        + local_values[start_col + FP_SUBTRACTION_Y_OFFSET + j]
+                        + local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j - 1]
+                        - (local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j]
+                            * FE::from_canonical_u64(1 << 32))
+                        - local_values[start_col + FP_SUBTRACTION_X_OFFSET + j]),
+            )
+        }
+    }
 }
 
 pub fn add_subtraction_fp_constraints_ext_circuit<
@@ -1406,39 +1406,39 @@ pub fn add_subtraction_fp_constraints_ext_circuit<
     bit_selector: ExtensionTarget<D>,
 ) {
     
-    // let constant = builder.constant_extension(F::Extension::from_canonical_u64(1<<32));
+    let constant = builder.constant_extension(F::Extension::from_canonical_u64(1<<32));
     
-    // for j in 0..12 {
-    //     if j == 0 {
-    //         let mul_tmp1 = builder.mul_extension( bit_selector , local_values[start_col + FP_SUBTRACTION_CHECK_OFFSET]);
-    //         let mul_tmp2 = builder.mul_extension(local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j], constant);
+    for j in 0..12 {
+        if j == 0 {
+            let mul_tmp1 = builder.mul_extension( bit_selector , local_values[start_col + FP_SUBTRACTION_CHECK_OFFSET]);
+            let mul_tmp2 = builder.mul_extension(local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j], constant);
             
-    //         let add_tmp1 = builder.add_extension(local_values[start_col + FP_SUBTRACTION_DIFF_OFFSET + j], local_values[start_col + FP_SUBTRACTION_Y_OFFSET + j]);
+            let add_tmp1 = builder.add_extension(local_values[start_col + FP_SUBTRACTION_DIFF_OFFSET + j], local_values[start_col + FP_SUBTRACTION_Y_OFFSET + j]);
 
-    //         let sub_tmp1 = builder.sub_extension(add_tmp1,mul_tmp2);
-    //         let sub_tmp2 = builder.add_extension(sub_tmp1, local_values[start_col + FP_SUBTRACTION_X_OFFSET + j]);
+            let sub_tmp1 = builder.sub_extension(add_tmp1,mul_tmp2);
+            let sub_tmp2 = builder.sub_extension(sub_tmp1, local_values[start_col + FP_SUBTRACTION_X_OFFSET + j]);
 
-    //         let c = builder.mul_extension(mul_tmp1, sub_tmp2);
-    //         yield_constr.constraint(builder, c);
+            let c = builder.mul_extension(mul_tmp1, sub_tmp2);
+            yield_constr.constraint(builder, c);
 
-    //     }
+        }
 
-    //     else{
+        else{
 
-    //         let mul_tmp1 = builder.mul_extension( bit_selector , local_values[start_col + FP_SUBTRACTION_CHECK_OFFSET]);
-    //         let mul_tmp2 = builder.mul_extension(local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j], constant);
+            let mul_tmp1 = builder.mul_extension( bit_selector , local_values[start_col + FP_SUBTRACTION_CHECK_OFFSET]);
+            let mul_tmp2 = builder.mul_extension(local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j], constant);
             
-    //         let add_tmp1 = builder.add_extension(local_values[start_col + FP_SUBTRACTION_DIFF_OFFSET + j], local_values[start_col + FP_SUBTRACTION_Y_OFFSET + j]);
-    //         let add_tmp2 =  builder.add_extension(add_tmp1, local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j - 1]);
+            let add_tmp1 = builder.add_extension(local_values[start_col + FP_SUBTRACTION_DIFF_OFFSET + j], local_values[start_col + FP_SUBTRACTION_Y_OFFSET + j]);
+            let add_tmp2 =  builder.add_extension(add_tmp1, local_values[start_col + FP_SUBTRACTION_BORROW_OFFSET + j - 1]);
 
-    //         let sub_tmp1 = builder.sub_extension(add_tmp2,mul_tmp2);
-    //         let sub_tmp2 = builder.add_extension(sub_tmp1, local_values[start_col + FP_SUBTRACTION_X_OFFSET + j]);
+            let sub_tmp1 = builder.sub_extension(add_tmp2,mul_tmp2);
+            let sub_tmp2 = builder.sub_extension(sub_tmp1, local_values[start_col + FP_SUBTRACTION_X_OFFSET + j]);
 
-    //         let c = builder.mul_extension(mul_tmp1, sub_tmp2);
-    //         yield_constr.constraint(builder, c);
+            let c = builder.mul_extension(mul_tmp1, sub_tmp2);
+            yield_constr.constraint(builder, c);
 
-    //     }
-    // }
+        }
+    }
 }
 pub fn add_negate_fp_constraints<
     F: RichField + Extendable<D>,
@@ -2180,7 +2180,6 @@ pub fn add_reduce_constraints_ext_circuit<
     selector_col: usize,
     bit_selector: ExtensionTarget<D>,
 ) {
-    let constant = builder.constant_extension(F::Extension::from_canonical_u64(1<<32));
     let modulus = modulus();
     let modulus_u32 = get_u32_vec_from_literal(modulus);
     for i in 0..12 {
@@ -2263,9 +2262,9 @@ fn add_fp2_mul_constraints<
     FE: FieldExtension<D2, BaseField = F>,
     P: PackedField<Scalar = FE>,
 {
-    // // for i in 0..12 {
-    // //     yield_constr.constraint_transition(local_values[start_col + X_0_Y_0_MULTIPLICATION_OFFSET + X_INPUT_OFFSET + i])
-    // // }
+    // for i in 0..12 {
+    //     yield_constr.constraint_transition(local_values[start_col + X_0_Y_0_MULTIPLICATION_OFFSET + X_INPUT_OFFSET + i])
+    // }
     for i in 0..24 {
         yield_constr.constraint_transition(
             bit_selector *
@@ -2629,7 +2628,7 @@ pub fn add_fp2_mul_constraints_ext_circuit<
     
     add_reduce_constraints_ext_circuit(builder, yield_constr, local_values, next_values,start_col + Z2_REDUCE_OFFSET,start_col + FP2_FP2_SELECTOR_OFFSET,bit_selector);
 
-    add_range_check_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + Z2_RANGECHECK_OFFSET, bit_selector)
+    add_range_check_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + Z2_RANGECHECK_OFFSET, bit_selector);
 
 }
 
