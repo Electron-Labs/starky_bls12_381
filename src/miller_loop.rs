@@ -3183,7 +3183,7 @@ pub fn add_non_residue_multiplication_constraints_ext_circuit<
         let c2 = builder.mul_extension(mul_tmp, sub_tmp2);
         yield_constr.constraint(builder, c2);
     }
-    add_subtraction_constraints_ext_circuit(builder, yield_constr, local_values, start_col + FP2_NON_RESIDUE_MUL_C0_C1_SUB_OFFSET + FP_ADDITION_TOTAL);
+    add_subtraction_fp_constraints_ext_circuit(builder, yield_constr, local_values, start_col + FP2_NON_RESIDUE_MUL_C0_C1_SUB_OFFSET + FP_ADDITION_TOTAL);
     for i in 0..12 {
         let sub_tmp = builder.sub_extension(  local_values[start_col + FP2_NON_RESIDUE_MUL_C0_C1_SUB_OFFSET + FP_ADDITION_TOTAL + FP_SUBTRACTION_DIFF_OFFSET + i] , local_values[start_col + FP2_NON_RESIDUE_MUL_Z0_REDUCE_OFFSET + FP_SINGLE_REDUCE_X_OFFSET + i]);
         let c = builder.mul_extension(local_values[start_col + FP2_NON_RESIDUE_MUL_C0_C1_SUB_OFFSET + FP_ADDITION_TOTAL + FP_SUBTRACTION_CHECK_OFFSET], sub_tmp);
@@ -4258,7 +4258,7 @@ pub fn add_fp6_multiplication_constraints_ext_circuit<
         yield_constr.constraint(builder, c1);
 
         let sub_tmp2 = builder.sub_extension(local_values[start_col + FP6_MUL_Y_INPUT_OFFSET + i + 48] , local_values[start_col + FP6_MUL_T2_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i]);
-        let c2 = builder.sub_extension(sub_tmp2,  local_values[start_col + FP6_MUL_T2_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET]);
+        let c2 = builder.mul_extension(sub_tmp2,  local_values[start_col + FP6_MUL_T2_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET]);
         yield_constr.constraint(builder, c2);
     }
     add_fp2_mul_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + FP6_MUL_T2_CALC_OFFSET);
@@ -4386,7 +4386,7 @@ pub fn add_fp6_multiplication_constraints_ext_circuit<
         yield_constr.constraint(builder, c1);
 
         let sub_tmp2 = builder.sub_extension(local_values[start_col + FP6_MUL_X_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i] , local_values[start_col + FP6_MUL_T8_CALC_OFFSET + FP2_NON_RESIDUE_MUL_Z1_REDUCE_OFFSET + FP_SINGLE_REDUCED_OFFSET + i]);
-        let c2 = builder.sub_extension(sub_tmp2, local_values[start_col + FP6_MUL_X_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET]);
+        let c2 = builder.mul_extension(sub_tmp2, local_values[start_col + FP6_MUL_X_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET]);
         yield_constr.constraint(builder, c2);
 
         let sub_tmp3 = builder.sub_extension( local_values[start_col + FP6_MUL_X_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_Y_OFFSET + i] , local_values[start_col + FP6_MUL_T0_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]);
@@ -4751,17 +4751,16 @@ pub fn add_multiply_by_1_constraints_ext_circuit<
     start_col: usize,
 ) {
     for i in 0..24 {
+        let mul_tmp = local_values[start_col + MULTIPLY_BY_1_SELECTOR_OFFSET];
         for j in 0..3 {
-            let mul_tmp = local_values[start_col + MULTIPLY_BY_1_SELECTOR_OFFSET];
 
             let sub_tmp1 = builder.sub_extension(local_values[start_col + MULTIPLY_BY_1_INPUT_OFFSET + j*24 + i] , next_values[start_col + MULTIPLY_BY_1_INPUT_OFFSET + j*24 + i]);
             let c1 = builder.mul_extension(sub_tmp1, mul_tmp);
             yield_constr.constraint_transition(builder, c1);
-
-            let sub_tmp2 = builder.sub_extension(local_values[start_col + MULTIPLY_BY_1_B1_OFFSET + i] , next_values[start_col + MULTIPLY_BY_1_B1_OFFSET + i]);
-            let c2 = builder.mul_extension(sub_tmp2, mul_tmp);
-            yield_constr.constraint_transition(builder, c2);
         }
+        let sub_tmp2 = builder.sub_extension(local_values[start_col + MULTIPLY_BY_1_B1_OFFSET + i] , next_values[start_col + MULTIPLY_BY_1_B1_OFFSET + i]);
+        let c2 = builder.mul_extension(sub_tmp2, mul_tmp);
+        yield_constr.constraint_transition(builder, c2);
     }
 
     // T0
@@ -4770,11 +4769,11 @@ pub fn add_multiply_by_1_constraints_ext_circuit<
 
         let sub_tmp1 = builder.sub_extension(local_values[start_col + MULTIPLY_BY_1_T0_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i] , local_values[start_col + MULTIPLY_BY_1_INPUT_OFFSET + i + 48]);
         let c1 = builder.mul_extension(sub_tmp1, mul_tmp);
-        yield_constr.constraint_transition(builder, c1);
+        yield_constr.constraint(builder, c1);
 
         let sub_tmp2 = builder.sub_extension(local_values[start_col + MULTIPLY_BY_1_T0_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i] , local_values[start_col + MULTIPLY_BY_1_B1_OFFSET + i]);
         let c2 = builder.mul_extension(sub_tmp2, mul_tmp);
-        yield_constr.constraint_transition(builder, c2);
+        yield_constr.constraint(builder, c2);
     }
     add_fp2_mul_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + MULTIPLY_BY_1_T0_CALC_OFFSET);
     
@@ -5861,7 +5860,7 @@ pub fn add_multiply_by_014_constraints_ext_circuit<
                 yield_constr.constraint(builder, c1);
                 
                 let sub_tmp2 = builder.sub_extension(local_values[start_col + MULTIPLY_BY_014_T6_CALC_OFFSET + FP6_ADDITION_TOTAL + subtraction_offset + FP_SUBTRACTION_Y_OFFSET + i] , local_values[start_col + MULTIPLY_BY_014_T0_CALC_OFFSET + input_offset + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*k + FP_SINGLE_REDUCED_OFFSET + i]);
-                let c2 = builder.sub_extension(sub_tmp2, local_values[start_col + MULTIPLY_BY_014_T6_CALC_OFFSET + FP6_ADDITION_TOTAL + subtraction_offset + FP_SUBTRACTION_CHECK_OFFSET]);
+                let c2 = builder.mul_extension(sub_tmp2, local_values[start_col + MULTIPLY_BY_014_T6_CALC_OFFSET + FP6_ADDITION_TOTAL + subtraction_offset + FP_SUBTRACTION_CHECK_OFFSET]);
                 yield_constr.constraint(builder, c2);
             }
         }
@@ -6623,7 +6622,7 @@ pub fn add_miller_loop_constraints_ext_circuit<
             yield_constr.constraint(builder, c2);
 
             let sub_tmp = builder.sub_extension(one, next_values[start_col + BIT1_SELECTOR_OFFSET]);
-            let mul_tmp2 = builder.sub_extension(next_values[start_col + FIRST_ROW_SELECTOR_OFFSET], sub_tmp);
+            let mul_tmp2 = builder.mul_extension(next_values[start_col + FIRST_ROW_SELECTOR_OFFSET], sub_tmp);
 
             let sub_tmp3 = builder.sub_extension(next_values[start_col + F12_OFFSET + j*12 + i] , local_values[start_col + F12_SQ_CALC_OFFSET + FP12_MUL_X_CALC_OFFSET + FP6_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i]);
             let c3 = builder.mul_extension(sub_tmp3, mul_tmp2);
@@ -6661,7 +6660,7 @@ pub fn add_miller_loop_constraints_ext_circuit<
             yield_constr.constraint(builder, c);
         }
     }
-    add_fp2_fp_mul_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + O1_CALC_OFFSET);
+    add_fp2_fp_mul_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + O4_CALC_OFFSET);
 
     // f12 multiply by 014
     for i in 0..12 {
