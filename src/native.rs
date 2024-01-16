@@ -958,11 +958,15 @@ pub fn mul_fp_12(x: Fp12, y: Fp12) -> Fp12 {
 }
 
 impl Fp2 {
-    pub fn forbenius_map(&self, pow: usize) -> Self {
-        let constants = [
+
+    pub fn forbenius_coefficients() -> [Fp; 2] {
+        [
             Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
             Fp::get_fp_from_biguint(BigUint::from_str("4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559786").unwrap()),
-        ];
+        ]
+    }
+    pub fn forbenius_map(&self, pow: usize) -> Self {
+        let constants = Fp2::forbenius_coefficients();
         Fp2([
             self.0[0],
             self.0[1]*constants[pow%2]
@@ -971,36 +975,38 @@ impl Fp2 {
 }
 
 impl Fp6 {
-    pub fn forbenius_map(&self, pow: usize) -> Self {
-        // println!("--- fp6 forbenius map ---");
-        let FP6_FROBENIUS_COEFFICIENTS_1 = [
-            Fp2([
-                Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
-                Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
-            ]),
-            Fp2([
-                Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
-                Fp::get_fp_from_biguint(BigUint::from_str("4002409555221667392624310435006688643935503118305586438271171395842971157480381377015405980053539358417135540939436").unwrap()),
-            ]),
-            Fp2([
-                Fp::get_fp_from_biguint(BigUint::from_str("793479390729215512621379701633421447060886740281060493010456487427281649075476305620758731620350").unwrap()),
-                Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
-            ]),
-            Fp2([
-                Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
-                Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
-            ]),
-            Fp2([
-                Fp::get_fp_from_biguint(BigUint::from_str("793479390729215512621379701633421447060886740281060493010456487427281649075476305620758731620350").unwrap()),
-                Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
-            ]),
-            Fp2([
-                Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
-                Fp::get_fp_from_biguint(BigUint::from_str("4002409555221667392624310435006688643935503118305586438271171395842971157480381377015405980053539358417135540939436").unwrap()),
-            ]),
-        ];
 
-        let FP6_FROBENIUS_COEFFICIENTS_2 = [
+    pub fn forbenius_coefficients_1() -> [Fp2; 6] {
+        [
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
+            ]),
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str("4002409555221667392624310435006688643935503118305586438271171395842971157480381377015405980053539358417135540939436").unwrap()),
+            ]),
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str("793479390729215512621379701633421447060886740281060493010456487427281649075476305620758731620350").unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
+            ]),
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
+            ]),
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str("793479390729215512621379701633421447060886740281060493010456487427281649075476305620758731620350").unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
+            ]),
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str("4002409555221667392624310435006688643935503118305586438271171395842971157480381377015405980053539358417135540939436").unwrap()),
+            ]),
+        ]
+    }
+
+    pub fn forbenius_coefficients_2() -> [Fp2; 6] {
+        [
             Fp2([
                 Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
                 Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
@@ -1025,7 +1031,13 @@ impl Fp6 {
                 Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
                 Fp::get_fp_from_biguint(BigUint::from_str("793479390729215512621379701633421447060886740281060493010456487427281649075476305620758731620351").unwrap()),
             ]),
-        ];
+        ]
+    }
+    pub fn forbenius_map(&self, pow: usize) -> Self {
+        // println!("--- fp6 forbenius map ---");
+        let FP6_FROBENIUS_COEFFICIENTS_1 = Fp6::forbenius_coefficients_1();
+
+        let FP6_FROBENIUS_COEFFICIENTS_2 = Fp6::forbenius_coefficients_2();
         self.print();
         let c0 = Fp2(self.0[0..2].to_vec().try_into().unwrap());
         // println!("c0 {:?}", c0.to_biguint());

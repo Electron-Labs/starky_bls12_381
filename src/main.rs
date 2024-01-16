@@ -2,7 +2,7 @@ use num_bigint::BigUint;
 use plonky2::{plonk::config::{PoseidonGoldilocksConfig, GenericConfig}, util::timing::{TimingTree, self}};
 use starky::{config::StarkConfig, prover::prove, verifier::verify_stark_proof};
 use plonky2::field::types::Field;
-use crate::{native::{get_u32_vec_from_literal_24, modulus, get_u32_vec_from_literal, Fp2, Fp, mul_Fp2, Fp6, mul_Fp6, Fp12}, fp_mult_starky::FpMultiplicationStark, fp2_mult_starky::Fp2MultiplicationStark, calc_pairing_precomp::{PairingPrecompStark, ELL_COEFFS_PUBLIC_INPUTS_OFFSET}, fp6_mult_starky::Fp6MulStark, fp12_mult_starky::Fp12MulStark, multiply_by_014::MultiplyBy014Stark, miller_loop::MillerLoopStark, cyclotomic_exponent::CyclotomicExponentStark};
+use crate::{native::{get_u32_vec_from_literal_24, modulus, get_u32_vec_from_literal, Fp2, Fp, mul_Fp2, Fp6, mul_Fp6, Fp12}, fp_mult_starky::FpMultiplicationStark, fp2_mult_starky::Fp2MultiplicationStark, calc_pairing_precomp::{PairingPrecompStark, ELL_COEFFS_PUBLIC_INPUTS_OFFSET}, fp6_mult_starky::Fp6MulStark, fp12_mult_starky::Fp12MulStark, multiply_by_014::MultiplyBy014Stark, miller_loop::MillerLoopStark, cyclotomic_exponent::CyclotomicExponentStark, forbenium_map::ForbeniusMapStark};
 use starky::util::trace_rows_to_poly_values;
 use std::time::Instant;
 
@@ -17,6 +17,7 @@ pub mod fp12_mult_starky;
 pub mod multiply_by_014;
 pub mod miller_loop;
 pub mod cyclotomic_exponent;
+pub mod forbenium_map;
 
 pub const PUBLIC_INPUTS: usize = 72;
 
@@ -381,8 +382,43 @@ fn cyclomic_exponent_main() {
     verify_stark_proof(s_, proof.unwrap(), &config).unwrap();
 }
 
+fn forbenius_map_main() {
+    const D: usize = 2;
+    type C = PoseidonGoldilocksConfig;
+    type F = <C as GenericConfig<D>>::F;
+    type S = ForbeniusMapStark<F, D>;
+
+    let mut config = StarkConfig::standard_fast_config();
+    let mut stark = S::new(16);
+    let s_ = stark.clone();
+    let s = Instant::now();
+    let x = Fp6([Fp([370707383, 3065163735, 2221931215, 2431460217, 123453649, 516692404, 203942113, 2726038223, 473525835, 239517933, 3790313598, 263774958]), Fp([800217643, 957525897, 876467196, 1366993427, 1571859852, 2000685318, 2241561315, 1568024120, 2093758947, 2403717514, 2051973143, 428783709]), Fp([1502725972, 953486186, 1866220462, 2304147875, 2692342507, 2424590208, 3813956537, 1003995524, 3962298900, 763374136, 2239630554, 69286559]), Fp([2985906221, 697620966, 517137489, 2357773488, 2791609619, 2585290171, 3229554474, 3433752466, 930733166, 1680938383, 2579484204, 162995438]), Fp([3924617978, 2966186322, 2374406293, 1914516974, 162308087, 3047088119, 3495238106, 3598298580, 2636309570, 4056913079, 2759294726, 26832879]), Fp([1096613288, 261249120, 917002207, 544426308, 3498416431, 1468612259, 4142075764, 1047663695, 972342196, 2730904947, 512614813, 166948613])]);
+    let pow = 3;
+    let res = x.forbenius_map(pow);
+    let mut public_inputs = Vec::<F>::new();
+    for e in x.get_u32_slice().concat() {
+        public_inputs.push(F::from_canonical_u32(e));
+    }
+    public_inputs.push(F::from_canonical_usize(pow));
+    for e in res.get_u32_slice().concat() {
+        public_inputs.push(F::from_canonical_u32(e));
+    }
+    assert_eq!(public_inputs.len(), forbenium_map::PUBLIC_INPUTS);
+    stark.generate_trace(x, pow);
+    let trace_poly_values = trace_rows_to_poly_values(stark.trace.clone());
+    let proof = prove::<F, C, S, D>(
+        stark,
+        &config,
+        trace_poly_values,
+        &public_inputs,
+        &mut TimingTree::default(),
+    );
+    println!("Time taken to gen proof {:?}", s.elapsed());
+    verify_stark_proof(s_, proof.unwrap(), &config).unwrap();
+}
+
 fn main() {
-    let test_fp_which: usize = 8;
+    let test_fp_which: usize = 9;
     if test_fp_which == 1 {
         fp1_main();
     } else if test_fp_which == 2 {
@@ -399,5 +435,7 @@ fn main() {
         miller_loop_main();
     } else if test_fp_which == 8 {
         cyclomic_exponent_main();
+    } else if test_fp_which == 9 {
+        forbenius_map_main();
     }
 }
