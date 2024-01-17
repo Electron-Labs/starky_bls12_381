@@ -256,13 +256,30 @@ pub const FP6_FORBENIUS_MAP_T1_CALC_OFFSET: usize = FP6_FORBENIUS_MAP_Y_CALC_OFF
 pub const FP6_FORBENIUS_MAP_Z_CALC_OFFSET: usize = FP6_FORBENIUS_MAP_T1_CALC_OFFSET + FP2_FORBENIUS_MAP_TOTAL_COLUMNS;
 pub const FP6_FORBENIUS_MAP_TOTAL_COLUMNS: usize = FP6_FORBENIUS_MAP_Z_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
 
-pub const TOTAL_COLUMNS: usize = FP6_FORBENIUS_MAP_TOTAL_COLUMNS;
+// Forbenius map Fp12
+pub const FP12_FORBENIUS_MAP_SELECTOR_OFFSET: usize = 0;
+pub const FP12_FORBENIUS_MAP_INPUT_OFFSET: usize = FP12_FORBENIUS_MAP_SELECTOR_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_POW_OFFSET: usize = FP12_FORBENIUS_MAP_INPUT_OFFSET + 24*3*2;
+pub const FP12_FORBENIUS_MAP_DIV_OFFSET: usize = FP12_FORBENIUS_MAP_POW_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_REM_OFFSET: usize = FP12_FORBENIUS_MAP_DIV_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_BIT0_OFFSET: usize = FP12_FORBENIUS_MAP_REM_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_BIT1_OFFSET: usize = FP12_FORBENIUS_MAP_BIT0_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_BIT2_OFFSET: usize = FP12_FORBENIUS_MAP_BIT1_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_BIT3_OFFSET: usize = FP12_FORBENIUS_MAP_BIT2_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_R0_CALC_OFFSET: usize = FP12_FORBENIUS_MAP_BIT3_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET: usize = FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_TOTAL_COLUMNS;
+pub const FP12_FORBENIUS_MAP_C0_CALC_OFFSET: usize = FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + FP6_FORBENIUS_MAP_TOTAL_COLUMNS;
+pub const FP12_FORBENIUS_MAP_C1_CALC_OFFSET: usize = FP12_FORBENIUS_MAP_C0_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const FP12_FORBENIUS_MAP_C2_CALC_OFFSET: usize = FP12_FORBENIUS_MAP_C1_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const FP12_FORBENIUS_MAP_TOTAL_COLUMNS: usize = FP12_FORBENIUS_MAP_C2_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+
+pub const TOTAL_COLUMNS: usize = FP12_FORBENIUS_MAP_TOTAL_COLUMNS;
 pub const COLUMNS: usize = TOTAL_COLUMNS;
 
 pub const PIS_INPUT_OFFSET: usize = 0;
-pub const PIS_POW_OFFSET: usize = PIS_INPUT_OFFSET + 24*3;
+pub const PIS_POW_OFFSET: usize = PIS_INPUT_OFFSET + 24*3*2;
 pub const PIS_RES_OFFSET: usize = PIS_POW_OFFSET + 1;
-pub const PUBLIC_INPUTS: usize = PIS_RES_OFFSET + 24*3;
+pub const PUBLIC_INPUTS: usize = PIS_RES_OFFSET + 24*3*2;
 
 macro_rules! bit_decomp_32 {
     ($row:expr, $col:expr, $f:ty, $p:ty) => {
@@ -929,7 +946,7 @@ impl<F: RichField + Extendable<D>, const D: usize> ForbeniusMapStark<F, D> {
         let forbenius_coefficients = Fp2::forbenius_coefficients();
         self.fill_multiplication_trace_no_mod_reduction(&x.0[1].0, &forbenius_coefficients[rem].0, start_row, end_row, start_col + FP2_FORBENIUS_MAP_T0_CALC_OFFSET);
         self.trace[start_row + 11][start_col + FP2_FORBENIUS_MAP_MUL_RES_ROW] = F::ONE;
-        let x_y = (x.0[1].to_biguint() * forbenius_coefficients[rem].to_biguint()).to_u32_digits().try_into().unwrap();
+        let x_y = get_u32_vec_from_literal_24(x.0[1].to_biguint() * forbenius_coefficients[rem].to_biguint());
         let res = self.fill_reduction_trace(&x_y, start_row, end_row, start_col + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS);
         for row in start_row..end_row + 1 {
             self.fill_range_check_trace(&res, row, start_col + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS + REDUCTION_TOTAL);
@@ -968,9 +985,40 @@ impl<F: RichField + Extendable<D>, const D: usize> ForbeniusMapStark<F, D> {
         let _z = t1 * forbenius_coefficients_2[pow%6];
         self.generate_trace_fp2_mul(t1.get_u32_slice(), forbenius_coefficients_2[pow%6].get_u32_slice(), start_row, end_row, start_col + FP6_FORBENIUS_MAP_Z_CALC_OFFSET);
     }
-    
-    pub fn generate_trace(&mut self, x: Fp6, pow: usize) {
-        self.fill_trace_fp6_forbenius_map(&x, pow, 0, self.num_rows-1, 0);
+
+    pub fn fill_trace_fp12_forbenius_map(&mut self, x: &Fp12, pow: usize, start_row: usize, end_row: usize, start_col: usize) {
+        let div = pow / 12;
+        let rem = pow % 12;
+        for row in start_row..end_row + 1 {
+            self.assign_u32_in_series(row, start_col + FP12_FORBENIUS_MAP_INPUT_OFFSET, &x.get_u32_slice().concat());
+            self.trace[row][start_col + FP12_FORBENIUS_MAP_SELECTOR_OFFSET] = F::ONE;
+            self.trace[row][start_col + FP12_FORBENIUS_MAP_POW_OFFSET] = F::from_canonical_usize(pow);
+            self.trace[row][start_col + FP12_FORBENIUS_MAP_DIV_OFFSET] = F::from_canonical_usize(div);
+            self.trace[row][start_col + FP12_FORBENIUS_MAP_REM_OFFSET] = F::from_canonical_usize(rem);
+            self.trace[row][start_col + FP12_FORBENIUS_MAP_BIT0_OFFSET] = F::from_canonical_usize(rem&1);
+            self.trace[row][start_col + FP12_FORBENIUS_MAP_BIT1_OFFSET] = F::from_canonical_usize((rem>>1)&1);
+            self.trace[row][start_col + FP12_FORBENIUS_MAP_BIT2_OFFSET] = F::from_canonical_usize((rem>>2)&1);
+            self.trace[row][start_col + FP12_FORBENIUS_MAP_BIT3_OFFSET] = F::from_canonical_usize(rem>>3);
+        }
+        let r0 = Fp6(x.0[0..6].to_vec().try_into().unwrap());
+        let r1 = Fp6(x.0[6..12].to_vec().try_into().unwrap());
+        let _x = r0.forbenius_map(pow);
+        self.fill_trace_fp6_forbenius_map(&r0, pow, start_row, end_row, start_col + FP12_FORBENIUS_MAP_R0_CALC_OFFSET);
+        let c0c1c2 = r1.forbenius_map(pow);
+        self.fill_trace_fp6_forbenius_map(&r1, pow, start_row, end_row, start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET);
+        let c0 = Fp2(c0c1c2.0[0..2].to_vec().try_into().unwrap());
+        let c1 = Fp2(c0c1c2.0[2..4].to_vec().try_into().unwrap());
+        let c2 = Fp2(c0c1c2.0[4..6].to_vec().try_into().unwrap());
+        let forbenius_coefficients = Fp12::forbenius_coefficients();
+        let coeff = forbenius_coefficients[pow % 12];
+        self.generate_trace_fp2_mul(c0.get_u32_slice(), coeff.get_u32_slice(), start_row, end_row, start_col + FP12_FORBENIUS_MAP_C0_CALC_OFFSET);
+        self.generate_trace_fp2_mul(c1.get_u32_slice(), coeff.get_u32_slice(), start_row, end_row, start_col + FP12_FORBENIUS_MAP_C1_CALC_OFFSET);
+        self.generate_trace_fp2_mul(c2.get_u32_slice(), coeff.get_u32_slice(), start_row, end_row, start_col + FP12_FORBENIUS_MAP_C2_CALC_OFFSET);
+    }
+
+    pub fn generate_trace(&mut self, x: Fp12, pow: usize) {
+        self.fill_trace_fp12_forbenius_map(&x, pow, 0, self.num_rows-1, 0);
+
     }
 }
 
@@ -3496,20 +3544,16 @@ pub fn add_fp6_forbenius_map_constraints<F: RichField + Extendable<D>,
     let forbenius_coefficients_1 = Fp6::forbenius_coefficients_1().iter().map(|fp2| fp2.get_u32_slice().concat().try_into().unwrap()).collect::<Vec<[u32; 24]>>();
     let forbenius_coefficients_2 = Fp6::forbenius_coefficients_2().iter().map(|fp2| fp2.get_u32_slice().concat().try_into().unwrap()).collect::<Vec<[u32; 24]>>();
     let y1 = (0..24).map(|i|
-        (P::ONES - bit0) * (P::ONES - bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients_1[0][i]) +
-        (bit0) * (P::ONES - bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients_1[1][i]) +
-        (P::ONES - bit0) * (bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients_1[2][i]) +
-        (bit0) * (bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients_1[3][i]) +
-        (P::ONES - bit0) * (P::ONES - bit1) * (bit2) * FE::from_canonical_u32(forbenius_coefficients_1[4][i]) +
-        (bit0) * (P::ONES - bit1) * (bit2) * FE::from_canonical_u32(forbenius_coefficients_1[5][i])
+        (P::ONES - bit0) * (P::ONES - bit1) * FE::from_canonical_u32(forbenius_coefficients_1[0][i]) +
+        (bit0) * (P::ONES - bit1) * FE::from_canonical_u32(forbenius_coefficients_1[1][i]) +
+        (P::ONES - bit0) * (bit1) * FE::from_canonical_u32(forbenius_coefficients_1[2][i]) +
+        (bit0) * (bit1) * FE::from_canonical_u32(forbenius_coefficients_1[3][i])
     ).collect::<Vec<P>>();
     let y2 = (0..24).map(|i|
-        (P::ONES - bit0) * (P::ONES - bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients_2[0][i]) +
-        (bit0) * (P::ONES - bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients_2[1][i]) +
-        (P::ONES - bit0) * (bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients_2[2][i]) +
-        (bit0) * (bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients_2[3][i]) +
-        (P::ONES - bit0) * (P::ONES - bit1) * (bit2) * FE::from_canonical_u32(forbenius_coefficients_2[4][i]) +
-        (bit0) * (P::ONES - bit1) * (bit2) * FE::from_canonical_u32(forbenius_coefficients_2[5][i])
+        (P::ONES - bit0) * (P::ONES - bit1) * FE::from_canonical_u32(forbenius_coefficients_2[0][i]) +
+        (bit0) * (P::ONES - bit1) * FE::from_canonical_u32(forbenius_coefficients_2[1][i]) +
+        (P::ONES - bit0) * (bit1) * FE::from_canonical_u32(forbenius_coefficients_2[2][i]) +
+        (bit0) * (bit1) * FE::from_canonical_u32(forbenius_coefficients_2[3][i])
     ).collect::<Vec<P>>();
 
     yield_constr.constraint(
@@ -3517,19 +3561,6 @@ pub fn add_fp6_forbenius_map_constraints<F: RichField + Extendable<D>,
         local_values[start_col + FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_SELECTOR_OFFSET] *
         (local_values[start_col + FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_POW_OFFSET] -
         local_values[start_col + FP6_FORBENIUS_MAP_POW_OFFSET])
-    );
-    yield_constr.constraint(
-        bit_selector.unwrap_or(P::ONES) *
-        local_values[start_col + FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_SELECTOR_OFFSET] *
-        (local_values[start_col + FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_REM_OFFSET] -
-        local_values[start_col + FP6_FORBENIUS_MAP_BIT0_OFFSET])
-    );
-    yield_constr.constraint(
-        bit_selector.unwrap_or(P::ONES) *
-        local_values[start_col + FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_SELECTOR_OFFSET] *
-        (local_values[start_col + FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_DIV_OFFSET] -
-        local_values[start_col + FP6_FORBENIUS_MAP_BIT1_OFFSET] -
-        local_values[start_col + FP6_FORBENIUS_MAP_BIT2_OFFSET] * FE::TWO)
     );
     for i in 0..24 {
         yield_constr.constraint(
@@ -3546,19 +3577,6 @@ pub fn add_fp6_forbenius_map_constraints<F: RichField + Extendable<D>,
         local_values[start_col + FP6_FORBENIUS_MAP_T0_CALC_OFFSET + FP2_FORBENIUS_MAP_SELECTOR_OFFSET] *
         (local_values[start_col + FP6_FORBENIUS_MAP_T0_CALC_OFFSET + FP2_FORBENIUS_MAP_POW_OFFSET] -
         local_values[start_col + FP6_FORBENIUS_MAP_POW_OFFSET])
-    );
-    yield_constr.constraint(
-        bit_selector.unwrap_or(P::ONES) *
-        local_values[start_col + FP6_FORBENIUS_MAP_T0_CALC_OFFSET + FP2_FORBENIUS_MAP_SELECTOR_OFFSET] *
-        (local_values[start_col + FP6_FORBENIUS_MAP_T0_CALC_OFFSET + FP2_FORBENIUS_MAP_REM_OFFSET] -
-        local_values[start_col + FP6_FORBENIUS_MAP_BIT0_OFFSET])
-    );
-    yield_constr.constraint(
-        bit_selector.unwrap_or(P::ONES) *
-        local_values[start_col + FP6_FORBENIUS_MAP_T0_CALC_OFFSET + FP2_FORBENIUS_MAP_SELECTOR_OFFSET] *
-        (local_values[start_col + FP6_FORBENIUS_MAP_T0_CALC_OFFSET + FP2_FORBENIUS_MAP_DIV_OFFSET] -
-        local_values[start_col + FP6_FORBENIUS_MAP_BIT1_OFFSET] -
-        local_values[start_col + FP6_FORBENIUS_MAP_BIT2_OFFSET] * FE::TWO)
     );
     for i in 0..24 {
         yield_constr.constraint(
@@ -3604,19 +3622,6 @@ pub fn add_fp6_forbenius_map_constraints<F: RichField + Extendable<D>,
         (local_values[start_col + FP6_FORBENIUS_MAP_T1_CALC_OFFSET + FP2_FORBENIUS_MAP_POW_OFFSET] -
         local_values[start_col + FP6_FORBENIUS_MAP_POW_OFFSET])
     );
-    yield_constr.constraint(
-        bit_selector.unwrap_or(P::ONES) *
-        local_values[start_col + FP6_FORBENIUS_MAP_T1_CALC_OFFSET + FP2_FORBENIUS_MAP_SELECTOR_OFFSET] *
-        (local_values[start_col + FP6_FORBENIUS_MAP_T1_CALC_OFFSET + FP2_FORBENIUS_MAP_REM_OFFSET] -
-        local_values[start_col + FP6_FORBENIUS_MAP_BIT0_OFFSET])
-    );
-    yield_constr.constraint(
-        bit_selector.unwrap_or(P::ONES) *
-        local_values[start_col + FP6_FORBENIUS_MAP_T1_CALC_OFFSET + FP2_FORBENIUS_MAP_SELECTOR_OFFSET] *
-        (local_values[start_col + FP6_FORBENIUS_MAP_T1_CALC_OFFSET + FP2_FORBENIUS_MAP_DIV_OFFSET] -
-        local_values[start_col + FP6_FORBENIUS_MAP_BIT1_OFFSET] -
-        local_values[start_col + FP6_FORBENIUS_MAP_BIT2_OFFSET] * FE::TWO)
-    );
     for i in 0..24 {
         yield_constr.constraint(
             bit_selector.unwrap_or(P::ONES) *
@@ -3656,6 +3661,166 @@ pub fn add_fp6_forbenius_map_constraints<F: RichField + Extendable<D>,
     add_fp2_mul_constraints(local_values, next_values, yield_constr, start_col + FP6_FORBENIUS_MAP_Z_CALC_OFFSET, bit_selector);
 }
 
+pub fn add_fp12_forbenius_map_constraints<F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize
+>(
+    local_values: &[P],
+    next_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize,
+    bit_selector: Option<P>,
+) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    for i in 0..24*3*2 {
+        yield_constr.constraint_transition(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + FP12_FORBENIUS_MAP_SELECTOR_OFFSET] *
+            (local_values[start_col + FP12_FORBENIUS_MAP_INPUT_OFFSET + i] -
+            next_values[start_col + FP12_FORBENIUS_MAP_INPUT_OFFSET + i])
+        );
+    }
+    yield_constr.constraint_transition(
+        bit_selector.unwrap_or(P::ONES) *
+        local_values[start_col + FP12_FORBENIUS_MAP_SELECTOR_OFFSET] *
+        (local_values[start_col + FP12_FORBENIUS_MAP_POW_OFFSET] -
+        next_values[start_col + FP12_FORBENIUS_MAP_POW_OFFSET])
+    );
+    yield_constr.constraint(
+        bit_selector.unwrap_or(P::ONES) *
+        local_values[start_col + FP12_FORBENIUS_MAP_SELECTOR_OFFSET] *
+        (local_values[start_col + FP12_FORBENIUS_MAP_DIV_OFFSET] * FE::from_canonical_usize(12) +
+        local_values[start_col + FP12_FORBENIUS_MAP_REM_OFFSET] -
+        local_values[start_col + FP12_FORBENIUS_MAP_POW_OFFSET])
+    );
+    let bit0 = local_values[start_col + FP12_FORBENIUS_MAP_BIT0_OFFSET];
+    let bit1 = local_values[start_col + FP12_FORBENIUS_MAP_BIT1_OFFSET];
+    let bit2 = local_values[start_col + FP12_FORBENIUS_MAP_BIT2_OFFSET];
+    let bit3 = local_values[start_col + FP12_FORBENIUS_MAP_BIT3_OFFSET];
+    yield_constr.constraint(
+        bit_selector.unwrap_or(P::ONES) *
+        local_values[start_col + FP12_FORBENIUS_MAP_SELECTOR_OFFSET] *
+        (bit0 +
+        bit1 * FE::TWO +
+        bit2 * FE::from_canonical_usize(4) +
+        bit3 * FE::from_canonical_usize(8) -
+        local_values[start_col + FP12_FORBENIUS_MAP_REM_OFFSET])
+    );
+    let forbenius_coefficients = Fp12::forbenius_coefficients().iter().map(|fp2| fp2.get_u32_slice().concat().try_into().unwrap()).collect::<Vec<[u32; 24]>>();
+    let y = (0..24).map(|i|
+        (P::ONES - bit0) * (P::ONES - bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients[0][i]) +
+        (bit0) * (P::ONES - bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients[1][i]) +
+        (P::ONES - bit0) * (bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients[2][i]) +
+        (bit0) * (bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients[3][i]) +
+        (P::ONES - bit0) * (P::ONES - bit1) * (bit2) * FE::from_canonical_u32(forbenius_coefficients[4][i]) +
+        (bit0) * (P::ONES - bit1) * (bit2) * FE::from_canonical_u32(forbenius_coefficients[5][i]) +
+        (P::ONES - bit0) * (bit1) * (bit2) * FE::from_canonical_u32(forbenius_coefficients[6][i])
+    ).collect::<Vec<P>>();
+    yield_constr.constraint(
+        bit_selector.unwrap_or(P::ONES) *
+        local_values[start_col + FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_SELECTOR_OFFSET] *
+        (local_values[start_col + FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_POW_OFFSET] -
+        local_values[start_col + FP12_FORBENIUS_MAP_POW_OFFSET])
+    );
+    for i in 0..24*3 {
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_SELECTOR_OFFSET] *
+            (local_values[start_col + FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_INPUT_OFFSET + i] -
+            local_values[start_col + FP12_FORBENIUS_MAP_INPUT_OFFSET + i])
+        );
+    }
+    add_fp6_forbenius_map_constraints(local_values, next_values, yield_constr, start_col + FP12_FORBENIUS_MAP_R0_CALC_OFFSET, bit_selector);
+
+    yield_constr.constraint(
+        bit_selector.unwrap_or(P::ONES) *
+        local_values[start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + FP6_FORBENIUS_MAP_SELECTOR_OFFSET] *
+        (local_values[start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + FP6_FORBENIUS_MAP_POW_OFFSET] -
+        local_values[start_col + FP12_FORBENIUS_MAP_POW_OFFSET])
+    );
+    for i in 0..24*3 {
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + FP6_FORBENIUS_MAP_SELECTOR_OFFSET] *
+            (local_values[start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + FP6_FORBENIUS_MAP_INPUT_OFFSET + i] -
+            local_values[start_col + FP12_FORBENIUS_MAP_INPUT_OFFSET + i + 24*3])
+        );
+    }
+    add_fp6_forbenius_map_constraints(local_values, next_values, yield_constr, start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let offset = if j == 0 {
+                FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_INPUT_OFFSET
+            } else {
+                FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS + REDUCED_OFFSET
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + FP12_FORBENIUS_MAP_C0_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (local_values[start_col + FP12_FORBENIUS_MAP_C0_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + j*12 + i] -
+                local_values[start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + offset + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + FP12_FORBENIUS_MAP_C0_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (local_values[start_col + FP12_FORBENIUS_MAP_C0_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + j*12 + i] -
+                y[j*12 + i])
+            );
+        }
+    }
+    add_fp2_mul_constraints(local_values, next_values, yield_constr, start_col + FP12_FORBENIUS_MAP_C0_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let offset = if j == 0 {
+                FP6_FORBENIUS_MAP_Y_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
+            } else {
+                FP6_FORBENIUS_MAP_Y_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + FP12_FORBENIUS_MAP_C1_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (local_values[start_col + FP12_FORBENIUS_MAP_C1_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + j*12 + i] -
+                local_values[start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + offset + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + FP12_FORBENIUS_MAP_C1_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (local_values[start_col + FP12_FORBENIUS_MAP_C1_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + j*12 + i] -
+                y[j*12 + i])
+            );
+        }
+    }
+    add_fp2_mul_constraints(local_values, next_values, yield_constr, start_col + FP12_FORBENIUS_MAP_C1_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let offset = if j == 0 {
+                FP6_FORBENIUS_MAP_Z_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
+            } else {
+                FP6_FORBENIUS_MAP_Z_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + FP12_FORBENIUS_MAP_C2_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (local_values[start_col + FP12_FORBENIUS_MAP_C2_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + j*12 + i] -
+                local_values[start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + offset + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + FP12_FORBENIUS_MAP_C2_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (local_values[start_col + FP12_FORBENIUS_MAP_C2_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + j*12 + i] -
+                y[j*12 + i])
+            );
+        }
+    }
+    add_fp2_mul_constraints(local_values, next_values, yield_constr, start_col + FP12_FORBENIUS_MAP_C2_CALC_OFFSET, bit_selector);
+}
 // Implement constraint generator
 impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for ForbeniusMapStark<F, D> {
     type EvaluationFrame<FE, P, const D2: usize> = StarkFrame<P, P::Scalar, COLUMNS, PUBLIC_INPUTS>
@@ -3676,33 +3841,47 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for ForbeniusMapS
         let public_inputs = vars.get_public_inputs();
 
         // ----
+        for i in 0..24*3*2 {
+            yield_constr.constraint(
+                local_values[FP12_FORBENIUS_MAP_INPUT_OFFSET + i] - public_inputs[PIS_INPUT_OFFSET + i]
+            );
+        }
+        yield_constr.constraint(
+            local_values[FP12_FORBENIUS_MAP_POW_OFFSET] - public_inputs[PIS_POW_OFFSET]
+        );
         for i in 0..12 {
-            for j in 0..6 {
+            for j in 0..12 {
                 let offset = if j == 0 {
-                    FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_INPUT_OFFSET
+                    FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_INPUT_OFFSET
                 } else if j == 1 {
-                    FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS + REDUCED_OFFSET
+                    FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS + REDUCED_OFFSET
                 } else if j == 2 {
-                    FP6_FORBENIUS_MAP_Y_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
+                    FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_Y_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
                 } else if j == 3 {
-                    FP6_FORBENIUS_MAP_Y_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
+                    FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_Y_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
                 } else if j == 4 {
-                    FP6_FORBENIUS_MAP_Z_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
+                    FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_Z_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
+                } else if j == 5 {
+                    FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_Z_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
+                } else if j == 6 {
+                    FP12_FORBENIUS_MAP_C0_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
+                } else if j == 7 {
+                    FP12_FORBENIUS_MAP_C0_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
+                } else if j == 8 {
+                    FP12_FORBENIUS_MAP_C1_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
+                } else if j == 9 {
+                    FP12_FORBENIUS_MAP_C1_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
+                } else if j == 10 {
+                    FP12_FORBENIUS_MAP_C2_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
                 } else {
-                    FP6_FORBENIUS_MAP_Z_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
+                    FP12_FORBENIUS_MAP_C2_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
                 };
-                yield_constr.constraint(
-                    local_values[FP6_FORBENIUS_MAP_INPUT_OFFSET + j*12 + i] - public_inputs[PIS_INPUT_OFFSET + j*12 + i]
-                );
                 yield_constr.constraint(
                     local_values[offset + i] - public_inputs[PIS_RES_OFFSET + j*12 + i]
                 );
             }
         }
-        yield_constr.constraint(
-            local_values[FP6_FORBENIUS_MAP_POW_OFFSET] - public_inputs[PIS_POW_OFFSET]
-        );
-        add_fp6_forbenius_map_constraints(local_values, next_values, yield_constr, 0, None);
+        add_fp12_forbenius_map_constraints(local_values, next_values, yield_constr, 0, None);
     }
 
     type EvaluationFrameTarget =

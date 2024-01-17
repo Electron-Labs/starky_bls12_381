@@ -1055,9 +1055,8 @@ impl Fp6 {
 }
 
 impl Fp12 {
-    pub fn forbenius_map(&self, pow: usize) -> Self {
-        // println!(" ---- forbenius - map -----");
-        let FP12_FORBENIUS_COEFFICIENTS = [
+    pub fn forbenius_coefficients() -> [Fp2; 12] {
+        [
             Fp2([
                 Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
                 Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
@@ -1106,7 +1105,12 @@ impl Fp12 {
                 Fp::get_fp_from_biguint(BigUint::from_str("877076961050607968509681729531255177986764537961432449499635504522207616027455086505066378536590128544573588734230").unwrap()),
                 Fp::get_fp_from_biguint(BigUint::from_str("3125332594171059424908108096204648978570118281977575435832422631601824034463382777937621250592425535493320683825557").unwrap()),
             ]),
-        ];
+        ]
+    }
+
+    pub fn forbenius_map(&self, pow: usize) -> Self {
+        // println!(" ---- forbenius - map -----");
+        let FP12_FORBENIUS_COEFFICIENTS = Fp12::forbenius_coefficients();
         let r0 = Fp6(self.0[0..6].to_vec().try_into().unwrap()).forbenius_map(pow);
         r0.print();
         let c0c1c2 = Fp6(self.0[6..12].to_vec().try_into().unwrap()).forbenius_map(pow);
