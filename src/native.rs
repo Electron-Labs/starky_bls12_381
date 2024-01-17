@@ -502,7 +502,7 @@ pub fn sum_of_products(a: Vec<Fp>, b: Vec<Fp>) -> Fp{
     acc
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Fp2(pub(crate) [Fp; 2]);
 
 impl Fp2 {
