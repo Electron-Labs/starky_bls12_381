@@ -1199,46 +1199,39 @@ impl Fp12 {
     }
 
     pub fn final_exponentiate(&self) -> Self{
-        println!("master self");
-        self.print();
-        let t0 = self.forbenius_map(6) / self.clone();
-        println!("--- t0 ---");
-        t0.print();
-        let t1 = t0.forbenius_map(2) * t0;
-        //println!("--- t1 ---");
-        t1.print();
-        let t2 = t1.cyclotocmicExponent().conjugate();
-        //println!("--- t2 ---");
-        t2.print();
-        let t3 = t1.cyclotomicSquare().conjugate() * t2;
-        //println!("--- t3 ---");
-        t3.print();
-        let t4 = t3.cyclotocmicExponent().conjugate();
-        //println!("--- t4 ---");
-        t4.print();
-        let t5 = t4.cyclotocmicExponent().conjugate();
-        //println!("--- t5 ---");
-        t5.print();
-        let t6 = t5.cyclotocmicExponent().conjugate() * t2.cyclotomicSquare();
-        //println!("--- t6 ---");
-        t6.print();
-        let t7 = t6.cyclotocmicExponent().conjugate();
-        //println!("--- t7 ---");
-        t7.print();
-        let t2_t5_pow_q2 = (t2*t5).forbenius_map(2);
-        //println!("--- t2_t5_pow_q2 ---");
-        t2_t5_pow_q2.print();
-        let t4_t1_pow_q3 = (t4*t1).forbenius_map(3);
-        //println!("--- t4_t1_pow_q3 ---");
-        t4_t1_pow_q3.print();
-        let t6_t1c_pow_q1 = (t6*t1.conjugate()).forbenius_map(1);
-        //println!("--- t6_t1c_pow_q1 ---");
-        t6_t1c_pow_q1.print();
-        let t7_t3c_t1 = (t7*t3.conjugate())*(t1);
-        //println!("--- t7_t3c_t1 ---");
-        t7_t3c_t1.print();
-        // (t2 * t5)^(q²) * (t4 * t1)^(q³) * (t6 * t1.conj)^(q^1) * t7 * t3.conj * t1
-        return t2_t5_pow_q2*t4_t1_pow_q3*t6_t1c_pow_q1*t7_t3c_t1
+        let t_0 = self.forbenius_map(6);
+        let t_1 = t_0 / self.clone();
+        let t_2 = t_1.forbenius_map(2);
+        let t_3 = t_2 * t_1;
+        let t_4 = t_3.cyclotocmicExponent();
+        let t_5 = t_4.conjugate();
+        let t_6 = t_3.cyclotomicSquare();
+        let t_7 = t_6.conjugate();
+        let t_8 = t_7 * t_5;
+        let t_9 = t_8.cyclotocmicExponent();
+        let t_10 = t_9.conjugate();
+        let t_11 = t_10.cyclotocmicExponent();
+        let t_12 = t_11.conjugate();
+        let t_13 = t_12.cyclotocmicExponent();
+        let t_14 = t_13.conjugate();
+        let t_15 = t_5.cyclotomicSquare();
+        let t_16 = t_14 * t_15;
+        let t_17 = t_16.cyclotocmicExponent();
+        let t_18 = t_17.conjugate();
+        let t_19 = t_5 * t_12;
+        let t_20 = t_19.forbenius_map(2);
+        let t_21 = t_10 * t_3;
+        let t_22 = t_21.forbenius_map(3);
+        let t_23 = t_3.conjugate();
+        let t_24 = t_16 * t_23;
+        let t_25 = t_24.forbenius_map(1);
+        let t_26 = t_8.conjugate();
+        let t_27 = t_18 * t_26;
+        let t_28 = t_27 * t_3;
+        let t_29 = t_20 * t_22;
+        let t_30 = t_29 * t_25;
+        let t_31 = t_30 * t_28;
+        t_31
     }
 }
 
