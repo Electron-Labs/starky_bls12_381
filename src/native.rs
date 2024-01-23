@@ -267,7 +267,6 @@ pub fn calc_qs(x: Fp2, y: Fp2, z: Fp2) -> (Fp2, Fp2, Fp2) {
     let Qx = ax.clone();
     let Qy = ay.clone();
     let Qz = Fp2::one(); 
-    println!("{:?}", (Qx, Qy, Qz));
     (Qx, Qy, Qz)
 }
 
@@ -1250,8 +1249,6 @@ pub fn calc_pairing_precomp(x: Fp2, y: Fp2, z: Fp2) -> Vec<[Fp2; 3]> {
     let Qz = Fp2::one();
 
     let (testx, testy, testz) = calc_qs(x, y, z);
-    println!("test1::{:?}", (testx, testy, testz));
-    println!("test2::{:?}", (Qx, Qy, Qz));
 
     let mut Rx = Qx.clone();
     let mut Ry = Qy.clone();
@@ -1314,7 +1311,6 @@ pub fn calc_pairing_precomp(x: Fp2, y: Fp2, z: Fp2) -> Vec<[Fp2; 3]> {
         // println!("Rz_ {:?}", Rz.to_biguint());
         // phase 2
         if get_bls_12_381_parameter().bit(i) {
-            println!("entered here for i=={}", i);
             let bit1_t0 = Qy * Rz;
             let bit1_t1 = Ry - bit1_t0;
             // println!("bit1_t1__ {:?}", bit1_t1.to_biguint());
@@ -1376,7 +1372,6 @@ pub fn miller_loop(g1_x: Fp, g1_y: Fp, g2_x: Fp2, g2_y: Fp2, g2_z: Fp2) -> Fp12 
     let mut j = 0;
 
     for i in (0..get_bls_12_381_parameter().bits()-1).rev() {
-        println!("i -- {:?}", i);
         let E = precomputes[j];
         f12 = f12.multiplyBy014(E[0], E[1]*Px, E[2]*Py);
         if get_bls_12_381_parameter().bit(i) {
