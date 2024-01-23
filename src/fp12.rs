@@ -1,6 +1,7 @@
+use num_bigint::BigUint;
 use plonky2::{field::{extension::{Extendable, FieldExtension}, packed::PackedField, types::Field}, hash::hash_types::RichField, iop::ext_target::ExtensionTarget, plonk::circuit_builder::CircuitBuilder};
 use starky::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
-use crate::{native::{mul_by_nonresidue, Fp12, Fp2, Fp6}, utils::*, fp::*, fp2::*, fp6::*};
+use crate::{native::{fp4_square, get_bls_12_381_parameter, mul_by_nonresidue, Fp, Fp12, Fp2, Fp6}, utils::*, fp::*, fp2::*, fp6::*};
 
 // MultiplyBy014
 pub const MULTIPLY_BY_014_SELECTOR_OFFSET: usize = 0;
@@ -33,6 +34,65 @@ pub const FP12_MUL_T5_CALC_OFFSET: usize = FP12_MUL_T4_CALC_OFFSET + FP6_ADDITIO
 pub const FP12_MUL_T6_CALC_OFFSET: usize = FP12_MUL_T5_CALC_OFFSET + FP6_MUL_TOTAL_COLUMNS;
 pub const FP12_MUL_Y_CALC_OFFSET: usize = FP12_MUL_T6_CALC_OFFSET + FP6_ADDITION_TOTAL + FP6_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*6;
 pub const FP12_MUL_TOTAL_COLUMNS: usize = FP12_MUL_Y_CALC_OFFSET + FP6_ADDITION_TOTAL + FP6_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*6;
+
+pub const CYCLOTOMIC_SQ_SELECTOR_OFFSET: usize = 0;
+pub const CYCLOTOMIC_SQ_INPUT_OFFSET: usize = CYCLOTOMIC_SQ_SELECTOR_OFFSET + 1;
+pub const CYCLOTOMIC_SQ_T0_CALC_OFFSET: usize = CYCLOTOMIC_SQ_INPUT_OFFSET + 24*3*2;
+pub const CYCLOTOMIC_SQ_T1_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T0_CALC_OFFSET + FP4_SQ_TOTAL_COLUMNS;
+pub const CYCLOTOMIC_SQ_T2_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T1_CALC_OFFSET + FP4_SQ_TOTAL_COLUMNS;
+pub const CYCLOTOMIC_SQ_T3_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T2_CALC_OFFSET + FP4_SQ_TOTAL_COLUMNS;
+pub const CYCLOTOMIC_SQ_T4_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T3_CALC_OFFSET + FP2_NON_RESIDUE_MUL_TOTAL;
+pub const CYCLOTOMIC_SQ_T5_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T4_CALC_OFFSET + FP2_SUBTRACTION_TOTAL + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*2;
+pub const CYCLOTOMIC_SQ_C0_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T5_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
+pub const CYCLOTOMIC_SQ_T6_CALC_OFFSET: usize = CYCLOTOMIC_SQ_C0_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*2;
+pub const CYCLOTOMIC_SQ_T7_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T6_CALC_OFFSET + FP2_SUBTRACTION_TOTAL + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*2;
+pub const CYCLOTOMIC_SQ_C1_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T7_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
+pub const CYCLOTOMIC_SQ_T8_CALC_OFFSET: usize = CYCLOTOMIC_SQ_C1_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*2;
+pub const CYCLOTOMIC_SQ_T9_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T8_CALC_OFFSET + FP2_SUBTRACTION_TOTAL + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*2;
+pub const CYCLOTOMIC_SQ_C2_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T9_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
+pub const CYCLOTOMIC_SQ_T10_CALC_OFFSET: usize = CYCLOTOMIC_SQ_C2_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*2;
+pub const CYCLOTOMIC_SQ_T11_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T10_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*2;
+pub const CYCLOTOMIC_SQ_C3_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T11_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
+pub const CYCLOTOMIC_SQ_T12_CALC_OFFSET: usize = CYCLOTOMIC_SQ_C3_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*2;
+pub const CYCLOTOMIC_SQ_T13_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T12_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*2;
+pub const CYCLOTOMIC_SQ_C4_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T13_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
+pub const CYCLOTOMIC_SQ_T14_CALC_OFFSET: usize = CYCLOTOMIC_SQ_C4_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*2;
+pub const CYCLOTOMIC_SQ_T15_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T14_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*2;
+pub const CYCLOTOMIC_SQ_C5_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T15_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
+pub const CYCLOTOMIC_SQ_TOTAL_COLUMNS: usize = CYCLOTOMIC_SQ_C5_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*2;
+
+pub const CYCLOTOMIC_EXP_SELECTOR_OFFSET: usize = 0;
+pub const CYCLOTOMIC_EXP_START_ROW: usize = CYCLOTOMIC_EXP_SELECTOR_OFFSET + 1;
+pub const FIRST_ROW_SELECTOR_OFFSET: usize = CYCLOTOMIC_EXP_START_ROW + 1;
+pub const BIT1_SELECTOR_OFFSET: usize = FIRST_ROW_SELECTOR_OFFSET + 1;
+pub const RES_ROW_SELECTOR_OFFSET: usize = BIT1_SELECTOR_OFFSET + 1;
+pub const INPUT_OFFSET: usize = RES_ROW_SELECTOR_OFFSET + 1;
+pub const Z_OFFSET: usize = INPUT_OFFSET + 24*3*2;
+pub const Z_CYCLOTOMIC_SQ_OFFSET: usize = Z_OFFSET + 24*3*2;
+pub const Z_MUL_INPUT_OFFSET: usize = Z_OFFSET + 24*3*2;
+pub const CYCLOTOMIC_EXP_TOTAL_COLUMNS: usize = Z_MUL_INPUT_OFFSET + FP12_MUL_TOTAL_COLUMNS;
+
+// Forbenius map Fp12
+pub const FP12_FORBENIUS_MAP_SELECTOR_OFFSET: usize = 0;
+pub const FP12_FORBENIUS_MAP_INPUT_OFFSET: usize = FP12_FORBENIUS_MAP_SELECTOR_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_POW_OFFSET: usize = FP12_FORBENIUS_MAP_INPUT_OFFSET + 24*3*2;
+pub const FP12_FORBENIUS_MAP_DIV_OFFSET: usize = FP12_FORBENIUS_MAP_POW_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_REM_OFFSET: usize = FP12_FORBENIUS_MAP_DIV_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_BIT0_OFFSET: usize = FP12_FORBENIUS_MAP_REM_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_BIT1_OFFSET: usize = FP12_FORBENIUS_MAP_BIT0_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_BIT2_OFFSET: usize = FP12_FORBENIUS_MAP_BIT1_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_BIT3_OFFSET: usize = FP12_FORBENIUS_MAP_BIT2_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_R0_CALC_OFFSET: usize = FP12_FORBENIUS_MAP_BIT3_OFFSET + 1;
+pub const FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET: usize = FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_TOTAL_COLUMNS;
+pub const FP12_FORBENIUS_MAP_C0_CALC_OFFSET: usize = FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + FP6_FORBENIUS_MAP_TOTAL_COLUMNS;
+pub const FP12_FORBENIUS_MAP_C1_CALC_OFFSET: usize = FP12_FORBENIUS_MAP_C0_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const FP12_FORBENIUS_MAP_C2_CALC_OFFSET: usize = FP12_FORBENIUS_MAP_C1_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+pub const FP12_FORBENIUS_MAP_TOTAL_COLUMNS: usize = FP12_FORBENIUS_MAP_C2_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
+
+pub const FP12_CONJUGATE_INPUT_OFFSET: usize = 0;
+pub const FP12_CONJUGATE_OUTPUT_OFFSET: usize = FP12_CONJUGATE_INPUT_OFFSET + 24*3*2;
+pub const FP12_CONJUGATE_ADDITIION_OFFSET: usize = FP12_CONJUGATE_OUTPUT_OFFSET + 24*3*2;
+pub const FP12_CONJUGATE_TOTAL: usize = FP12_CONJUGATE_ADDITIION_OFFSET + FP6_ADDITION_TOTAL;
 
 pub fn fill_trace_multiply_by_014<F: RichField + Extendable<D>,
     const D: usize,
@@ -132,6 +192,193 @@ pub fn fill_trace_fp12_multiplication<F: RichField + Extendable<D>,
     for row in start_row..end_row+1 {
         fill_trace_subtraction_with_reduction_fp6(trace, &t6, &t1, row, start_col + FP12_MUL_Y_CALC_OFFSET);
     }
+}
+
+pub fn fill_trace_cyclotomic_sq<F: RichField + Extendable<D>,
+    const D: usize,
+    const C: usize,
+>(trace: &mut Vec<[F; C]>, x: &Fp12, start_row: usize, end_row: usize, start_col: usize) {
+    for row in start_row..end_row+1 {
+        assign_u32_in_series(trace, row, start_col + CYCLOTOMIC_SQ_INPUT_OFFSET, &x.get_u32_slice().concat());
+        trace[row][start_col + CYCLOTOMIC_SQ_SELECTOR_OFFSET] = F::ONE;
+    }
+    trace[end_row][start_col + CYCLOTOMIC_SQ_SELECTOR_OFFSET] = F::ZERO;
+    let c0c0 = Fp2(x.0[0..2].try_into().unwrap());
+    let c0c1 = Fp2(x.0[2..4].try_into().unwrap());
+    let c0c2 = Fp2(x.0[4..6].try_into().unwrap());
+    let c1c0 = Fp2(x.0[6..8].try_into().unwrap());
+    let c1c1 = Fp2(x.0[8..10].try_into().unwrap());
+    let c1c2 = Fp2(x.0[10..12].try_into().unwrap());
+    let two = Fp::get_fp_from_biguint(BigUint::from(2 as u32));
+
+    let t0 = fp4_square(c0c0, c1c1);
+    fill_trace_fp4_sq(trace, &c0c0, &c1c1, start_row, end_row, start_col + CYCLOTOMIC_SQ_T0_CALC_OFFSET);
+
+    let t1 = fp4_square(c1c0, c0c2);
+    fill_trace_fp4_sq(trace, &c1c0, &c0c2, start_row, end_row, start_col + CYCLOTOMIC_SQ_T1_CALC_OFFSET);
+
+    let t2 = fp4_square(c0c1, c1c2);
+    fill_trace_fp4_sq(trace, &c0c1, &c1c2, start_row, end_row, start_col + CYCLOTOMIC_SQ_T2_CALC_OFFSET);
+
+    let t3 = t2.1.mul_by_nonresidue();
+    for row in start_row..end_row+1 {
+        fill_trace_non_residue_multiplication(trace, &t2.1.get_u32_slice(), row, start_col + CYCLOTOMIC_SQ_T3_CALC_OFFSET);
+    }
+
+    let t4 = t0.0 - c0c0;
+    for row in start_row..end_row+1 {
+        fill_trace_subtraction_with_reduction(trace, &t0.0.get_u32_slice(), &c0c0.get_u32_slice(), row, start_col + CYCLOTOMIC_SQ_T4_CALC_OFFSET);
+    }
+    let t5 = t4 * two;
+    fill_trace_fp2_fp_mul(trace, &t4.get_u32_slice(), &two.0, start_row, end_row, start_col + CYCLOTOMIC_SQ_T5_CALC_OFFSET);
+    let _c0 = t5 + t0.0;
+    for row in start_row..end_row+1 {
+        fill_trace_addition_with_reduction(trace, &t5.get_u32_slice(), &t0.0.get_u32_slice(), row, start_col + CYCLOTOMIC_SQ_C0_CALC_OFFSET);
+    }
+
+    let t6 = t1.0 - c0c1;
+    for row in start_row..end_row+1 {
+        fill_trace_subtraction_with_reduction(trace, &t1.0.get_u32_slice(), &c0c1.get_u32_slice(), row, start_col + CYCLOTOMIC_SQ_T6_CALC_OFFSET);
+    }
+    let t7 = t6 * two;
+    fill_trace_fp2_fp_mul(trace, &t6.get_u32_slice(), &two.0, start_row, end_row, start_col + CYCLOTOMIC_SQ_T7_CALC_OFFSET);
+    let _c1 = t7 + t1.0;
+    for row in start_row..end_row+1 {
+        fill_trace_addition_with_reduction(trace, &t7.get_u32_slice(), &t1.0.get_u32_slice(), row, start_col + CYCLOTOMIC_SQ_C1_CALC_OFFSET);
+    }
+
+    let t8 = t2.0 - c0c2;
+    for row in start_row..end_row+1 {
+        fill_trace_subtraction_with_reduction(trace, &t2.0.get_u32_slice(), &c0c2.get_u32_slice(), row, start_col + CYCLOTOMIC_SQ_T8_CALC_OFFSET);
+    }
+    let t9 = t8 * two;
+    fill_trace_fp2_fp_mul(trace, &t8.get_u32_slice(), &two.0, start_row, end_row, start_col + CYCLOTOMIC_SQ_T9_CALC_OFFSET);
+    let _c2 = t9 + t2.0;
+    for row in start_row..end_row+1 {
+        fill_trace_addition_with_reduction(trace, &t9.get_u32_slice(), &t2.0.get_u32_slice(), row, start_col + CYCLOTOMIC_SQ_C2_CALC_OFFSET);
+    }
+
+    let t10 = t3 + c1c0;
+    for row in start_row..end_row+1 {
+        fill_trace_addition_with_reduction(trace, &t3.get_u32_slice(), &c1c0.get_u32_slice(), row, start_col + CYCLOTOMIC_SQ_T10_CALC_OFFSET);
+    }
+    let t11 = t10 * two;
+    fill_trace_fp2_fp_mul(trace, &t10.get_u32_slice(), &two.0, start_row, end_row, start_col + CYCLOTOMIC_SQ_T11_CALC_OFFSET);
+    let _c3 = t11 + t3;
+    for row in start_row..end_row+1 {
+        fill_trace_addition_with_reduction(trace, &t11.get_u32_slice(), &t3.get_u32_slice(), row, start_col + CYCLOTOMIC_SQ_C3_CALC_OFFSET);
+    }
+
+    let t12 = t0.1 + c1c1;
+    for row in start_row..end_row+1 {
+        fill_trace_addition_with_reduction(trace, &t0.1.get_u32_slice(), &c1c1.get_u32_slice(), row, start_col + CYCLOTOMIC_SQ_T12_CALC_OFFSET);
+    }
+    let t13 = t12 * two;
+    fill_trace_fp2_fp_mul(trace, &t12.get_u32_slice(), &two.0, start_row, end_row, start_col + CYCLOTOMIC_SQ_T13_CALC_OFFSET);
+    let _c4 = t13 + t0.1;
+    for row in start_row..end_row+1 {
+        fill_trace_addition_with_reduction(trace, &t13.get_u32_slice(), &t0.1.get_u32_slice(), row, start_col + CYCLOTOMIC_SQ_C4_CALC_OFFSET);
+    }
+
+    let t14 = t1.1 + c1c2;
+    for row in start_row..end_row+1 {
+        fill_trace_addition_with_reduction(trace, &t1.1.get_u32_slice(), &c1c2.get_u32_slice(), row, start_col + CYCLOTOMIC_SQ_T14_CALC_OFFSET);
+    }
+    let t15 = t14 * two;
+    fill_trace_fp2_fp_mul(trace, &t14.get_u32_slice(), &two.0, start_row, end_row, start_col + CYCLOTOMIC_SQ_T15_CALC_OFFSET);
+    let _c5 = t15 + t1.1;
+    for row in start_row..end_row+1 {
+        fill_trace_addition_with_reduction(trace, &t15.get_u32_slice(), &t1.1.get_u32_slice(), row, start_col + CYCLOTOMIC_SQ_C5_CALC_OFFSET);
+    }
+}
+
+pub fn fill_trace_cyclotomic_exp<F: RichField + Extendable<D>,
+    const D: usize,
+    const C: usize,
+>(trace: &mut Vec<[F; C]>, x: &Fp12, start_row: usize, end_row: usize, start_col: usize) {
+    for row in start_row..end_row+1 {
+        assign_u32_in_series(trace, row, start_col + INPUT_OFFSET, &x.get_u32_slice().concat());
+        trace[row][start_col + CYCLOTOMIC_EXP_SELECTOR_OFFSET] = F::ONE;
+    }
+    trace[end_row][start_col + CYCLOTOMIC_EXP_SELECTOR_OFFSET] = F::ZERO;
+    trace[start_row][start_col + CYCLOTOMIC_EXP_START_ROW] = F::ONE;
+    let mut z = Fp12::one();
+    let mut i  = get_bls_12_381_parameter().bits() - 1;
+    let mut bitone = false;
+    assert_eq!(end_row + 1 - start_row, 70*12 + 1);
+
+    for j in 0..70 {
+        let s_row = start_row + j*12;
+        let e_row = s_row + 11;
+        for row in s_row..e_row+1 {
+            if bitone {
+                trace[row][start_col + BIT1_SELECTOR_OFFSET] = F::ONE;
+            }
+            assign_u32_in_series(trace, row, start_col + Z_OFFSET, &z.get_u32_slice().concat());
+        }
+        trace[s_row][start_col + FIRST_ROW_SELECTOR_OFFSET] = F::ONE;
+        if bitone {
+            fill_trace_fp12_multiplication(trace, &z, &x, s_row, e_row, start_col + Z_MUL_INPUT_OFFSET);
+            z = z * (*x);
+        } else {
+            fill_trace_cyclotomic_sq(trace, &z, s_row, e_row, start_col + Z_CYCLOTOMIC_SQ_OFFSET);
+            z = z.cyclotomicSquare();
+        }
+        if get_bls_12_381_parameter().bit(i) && !bitone {
+            bitone = true;
+        } else if j < 69 {
+            i -= 1;
+            bitone = false;
+        }
+    }
+    trace[start_row + 70*12][start_col + RES_ROW_SELECTOR_OFFSET] = F::ONE;
+    assign_u32_in_series(trace, start_row + 70*12, start_col + Z_OFFSET, &z.get_u32_slice().concat());
+}
+
+pub fn fill_trace_fp12_forbenius_map<F: RichField + Extendable<D>,
+    const D: usize,
+    const C: usize,
+>(trace: &mut Vec<[F; C]>, x: &Fp12, pow: usize, start_row: usize, end_row: usize, start_col: usize) {
+    let div = pow / 12;
+    let rem = pow % 12;
+    for row in start_row..end_row + 1 {
+        assign_u32_in_series(trace, row, start_col + FP12_FORBENIUS_MAP_INPUT_OFFSET, &x.get_u32_slice().concat());
+        trace[row][start_col + FP12_FORBENIUS_MAP_SELECTOR_OFFSET] = F::ONE;
+        trace[row][start_col + FP12_FORBENIUS_MAP_POW_OFFSET] = F::from_canonical_usize(pow);
+        trace[row][start_col + FP12_FORBENIUS_MAP_DIV_OFFSET] = F::from_canonical_usize(div);
+        trace[row][start_col + FP12_FORBENIUS_MAP_REM_OFFSET] = F::from_canonical_usize(rem);
+        trace[row][start_col + FP12_FORBENIUS_MAP_BIT0_OFFSET] = F::from_canonical_usize(rem&1);
+        trace[row][start_col + FP12_FORBENIUS_MAP_BIT1_OFFSET] = F::from_canonical_usize((rem>>1)&1);
+        trace[row][start_col + FP12_FORBENIUS_MAP_BIT2_OFFSET] = F::from_canonical_usize((rem>>2)&1);
+        trace[row][start_col + FP12_FORBENIUS_MAP_BIT3_OFFSET] = F::from_canonical_usize(rem>>3);
+    }
+    trace[end_row][start_col + FP12_FORBENIUS_MAP_SELECTOR_OFFSET] = F::ZERO;
+    let r0 = Fp6(x.0[0..6].to_vec().try_into().unwrap());
+    let r1 = Fp6(x.0[6..12].to_vec().try_into().unwrap());
+    let _x = r0.forbenius_map(pow);
+    fill_trace_fp6_forbenius_map(trace, &r0, pow, start_row, end_row, start_col + FP12_FORBENIUS_MAP_R0_CALC_OFFSET);
+    let c0c1c2 = r1.forbenius_map(pow);
+    fill_trace_fp6_forbenius_map(trace, &r1, pow, start_row, end_row, start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET);
+    let c0 = Fp2(c0c1c2.0[0..2].to_vec().try_into().unwrap());
+    let c1 = Fp2(c0c1c2.0[2..4].to_vec().try_into().unwrap());
+    let c2 = Fp2(c0c1c2.0[4..6].to_vec().try_into().unwrap());
+    let forbenius_coefficients = Fp12::forbenius_coefficients();
+    let coeff = forbenius_coefficients[pow % 12];
+    generate_trace_fp2_mul(trace, c0.get_u32_slice(), coeff.get_u32_slice(), start_row, end_row, start_col + FP12_FORBENIUS_MAP_C0_CALC_OFFSET);
+    generate_trace_fp2_mul(trace, c1.get_u32_slice(), coeff.get_u32_slice(), start_row, end_row, start_col + FP12_FORBENIUS_MAP_C1_CALC_OFFSET);
+    generate_trace_fp2_mul(trace, c2.get_u32_slice(), coeff.get_u32_slice(), start_row, end_row, start_col + FP12_FORBENIUS_MAP_C2_CALC_OFFSET);
+}
+
+pub fn fill_trace_fp12_conjugate<F: RichField + Extendable<D>,
+    const D: usize,
+    const C: usize,
+>(trace: &mut Vec<[F; C]>, x: &Fp12, row: usize, start_col: usize) {
+    assign_u32_in_series(trace, row, start_col + FP12_CONJUGATE_INPUT_OFFSET, &x.get_u32_slice().concat());
+    let conjugate = x.conjugate();
+    assign_u32_in_series(trace, row, start_col + FP12_CONJUGATE_OUTPUT_OFFSET, &conjugate.get_u32_slice().concat());
+    let x_fp6 = Fp6(x.0[6..12].try_into().unwrap());
+    let conjugat_fp6 = Fp6(conjugate.0[6..12].try_into().unwrap());
+    fill_trace_addition_fp6(trace, &x_fp6.get_u32_slice(), &conjugat_fp6.get_u32_slice(), row, start_col + FP12_CONJUGATE_ADDITIION_OFFSET);
 }
 
 pub fn add_multiply_by_014_constraints<F: RichField + Extendable<D>,
@@ -1255,4 +1502,847 @@ pub fn add_fp12_multiplication_constraints_ext_circuit<
         }
     }
     add_subtraction_with_reduction_constraints_fp6_ext_circuit(builder, yield_constr, local_values, start_col + FP12_MUL_Y_CALC_OFFSET, bit_selector);
+}
+
+pub fn add_cyclotomic_sq_constraints<F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize,
+>(
+    local_values: &[P],
+    next_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize,
+    bit_selector: Option<P>,
+) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    for i in 0..24*3*2 {
+        yield_constr.constraint_transition(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_SQ_SELECTOR_OFFSET] *
+            (local_values[start_col + CYCLOTOMIC_SQ_INPUT_OFFSET + i] - next_values[start_col + CYCLOTOMIC_SQ_INPUT_OFFSET + i])
+        );
+    }
+
+    for i in 0..24 {
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_SQ_T0_CALC_OFFSET + FP4_SQ_SELECTOR_OFFSET] *
+            (local_values[start_col + CYCLOTOMIC_SQ_T0_CALC_OFFSET + FP4_SQ_INPUT_X_OFFSET + i] -
+            local_values[start_col + CYCLOTOMIC_SQ_INPUT_OFFSET + i])
+        );
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_SQ_T0_CALC_OFFSET + FP4_SQ_SELECTOR_OFFSET] *
+            (local_values[start_col + CYCLOTOMIC_SQ_T0_CALC_OFFSET + FP4_SQ_INPUT_Y_OFFSET + i] -
+            local_values[start_col + CYCLOTOMIC_SQ_INPUT_OFFSET + 24*4 + i])
+        );
+    }
+    add_fp4_sq_constraints(local_values, next_values, yield_constr, start_col + CYCLOTOMIC_SQ_T0_CALC_OFFSET, bit_selector);
+
+    for i in 0..24 {
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_SQ_T1_CALC_OFFSET + FP4_SQ_SELECTOR_OFFSET] *
+            (local_values[start_col + CYCLOTOMIC_SQ_T1_CALC_OFFSET + FP4_SQ_INPUT_X_OFFSET + i] -
+            local_values[start_col + CYCLOTOMIC_SQ_INPUT_OFFSET + 24*3 + i])
+        );
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_SQ_T1_CALC_OFFSET + FP4_SQ_SELECTOR_OFFSET] *
+            (local_values[start_col + CYCLOTOMIC_SQ_T1_CALC_OFFSET + FP4_SQ_INPUT_Y_OFFSET + i] -
+            local_values[start_col + CYCLOTOMIC_SQ_INPUT_OFFSET + 24*2 + i])
+        );
+    }
+    add_fp4_sq_constraints(local_values, next_values, yield_constr, start_col + CYCLOTOMIC_SQ_T1_CALC_OFFSET, bit_selector);
+
+    for i in 0..24 {
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_SQ_T2_CALC_OFFSET + FP4_SQ_SELECTOR_OFFSET] *
+            (local_values[start_col + CYCLOTOMIC_SQ_T2_CALC_OFFSET + FP4_SQ_INPUT_X_OFFSET + i] -
+            local_values[start_col + CYCLOTOMIC_SQ_INPUT_OFFSET + 24*1 + i])
+        );
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_SQ_T2_CALC_OFFSET + FP4_SQ_SELECTOR_OFFSET] *
+            (local_values[start_col + CYCLOTOMIC_SQ_T2_CALC_OFFSET + FP4_SQ_INPUT_Y_OFFSET + i] -
+            local_values[start_col + CYCLOTOMIC_SQ_INPUT_OFFSET + 24*5 + i])
+        );
+    }
+    add_fp4_sq_constraints(local_values, next_values, yield_constr, start_col + CYCLOTOMIC_SQ_T2_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_SQ_T3_CALC_OFFSET + FP2_NON_RESIDUE_MUL_CHECK_OFFSET] *
+            (local_values[start_col + CYCLOTOMIC_SQ_T3_CALC_OFFSET + FP2_NON_RESIDUE_MUL_INPUT_OFFSET + i] -
+            local_values[start_col + CYCLOTOMIC_SQ_T2_CALC_OFFSET + FP4_SQ_Y_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i])
+        );
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_SQ_T3_CALC_OFFSET + FP2_NON_RESIDUE_MUL_CHECK_OFFSET] *
+            (local_values[start_col + CYCLOTOMIC_SQ_T3_CALC_OFFSET + FP2_NON_RESIDUE_MUL_INPUT_OFFSET + i + 12] -
+            local_values[start_col + CYCLOTOMIC_SQ_T2_CALC_OFFSET + FP4_SQ_Y_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL) + FP_SINGLE_REDUCED_OFFSET + i])
+        );
+    }
+    add_non_residue_multiplication_constraints(local_values, yield_constr, start_col + CYCLOTOMIC_SQ_T3_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let (fp_add_offset, fp_sub_offset) = if j == 0 {
+                (FP2_ADDITION_0_OFFSET, FP2_SUBTRACTION_0_OFFSET)
+            } else {
+                (FP2_ADDITION_1_OFFSET, FP2_SUBTRACTION_1_OFFSET)
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T4_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T4_CALC_OFFSET + fp_add_offset + FP_ADDITION_X_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T0_CALC_OFFSET + FP4_SQ_X_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T4_CALC_OFFSET + FP2_ADDITION_TOTAL + fp_sub_offset + FP_SUBTRACTION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T4_CALC_OFFSET + FP2_ADDITION_TOTAL + fp_sub_offset + FP_SUBTRACTION_Y_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_INPUT_OFFSET + j*12 + i])
+            )
+        }
+    }
+    add_subtraction_with_reduction_constranints(local_values, yield_constr, start_col + CYCLOTOMIC_SQ_T4_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T5_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T5_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + j*12 + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T4_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+        }
+        let val = if i == 0 {
+            FE::TWO
+        } else {
+            FE::ZERO
+        };
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_SQ_T5_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] *
+            (local_values[start_col + CYCLOTOMIC_SQ_T5_CALC_OFFSET + FP2_FP_Y_INPUT_OFFSET + i] - val)
+        );
+    }
+    add_fp2_fp_mul_constraints(local_values, next_values, yield_constr, start_col + CYCLOTOMIC_SQ_T5_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let (x_offset, fp_add_offset) = if j == 0 {
+                (X0_Y_REDUCE_OFFSET, FP2_ADDITION_0_OFFSET)
+            } else {
+                (X1_Y_REDUCE_OFFSET, FP2_ADDITION_1_OFFSET)
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_C0_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_C0_CALC_OFFSET + fp_add_offset + FP_ADDITION_X_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T5_CALC_OFFSET + x_offset + REDUCED_OFFSET + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_C0_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_C0_CALC_OFFSET + fp_add_offset + FP_ADDITION_Y_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T0_CALC_OFFSET + FP4_SQ_X_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+        }
+    }
+    add_addition_with_reduction_constranints(local_values, yield_constr, start_col + CYCLOTOMIC_SQ_C0_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let (fp_add_offset, fp_sub_offset) = if j == 0 {
+                (FP2_ADDITION_0_OFFSET, FP2_SUBTRACTION_0_OFFSET)
+            } else {
+                (FP2_ADDITION_1_OFFSET, FP2_SUBTRACTION_1_OFFSET)
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T6_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T6_CALC_OFFSET + fp_add_offset + FP_ADDITION_X_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T1_CALC_OFFSET + FP4_SQ_X_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T6_CALC_OFFSET + FP2_ADDITION_TOTAL + fp_sub_offset + FP_SUBTRACTION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T6_CALC_OFFSET + FP2_ADDITION_TOTAL + fp_sub_offset + FP_SUBTRACTION_Y_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_INPUT_OFFSET + j*12 + i + 24])
+            )
+        }
+    }
+    add_subtraction_with_reduction_constranints(local_values, yield_constr, start_col + CYCLOTOMIC_SQ_T6_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T7_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T7_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + j*12 + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T6_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+        }
+        let val = if i == 0 {
+            FE::TWO
+        } else {
+            FE::ZERO
+        };
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_SQ_T7_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] *
+            (local_values[start_col + CYCLOTOMIC_SQ_T7_CALC_OFFSET + FP2_FP_Y_INPUT_OFFSET + i] - val)
+        );
+    }
+    add_fp2_fp_mul_constraints(local_values, next_values, yield_constr, start_col + CYCLOTOMIC_SQ_T7_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let (x_offset, fp_add_offset) = if j == 0 {
+                (X0_Y_REDUCE_OFFSET, FP2_ADDITION_0_OFFSET)
+            } else {
+                (X1_Y_REDUCE_OFFSET, FP2_ADDITION_1_OFFSET)
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_C1_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_C1_CALC_OFFSET + fp_add_offset + FP_ADDITION_X_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T7_CALC_OFFSET + x_offset + REDUCED_OFFSET + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_C1_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_C1_CALC_OFFSET + fp_add_offset + FP_ADDITION_Y_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T1_CALC_OFFSET + FP4_SQ_X_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+        }
+    }
+    add_addition_with_reduction_constranints(local_values, yield_constr, start_col + CYCLOTOMIC_SQ_C1_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let (fp_add_offset, fp_sub_offset) = if j == 0 {
+                (FP2_ADDITION_0_OFFSET, FP2_SUBTRACTION_0_OFFSET)
+            } else {
+                (FP2_ADDITION_1_OFFSET, FP2_SUBTRACTION_1_OFFSET)
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T8_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T8_CALC_OFFSET + fp_add_offset + FP_ADDITION_X_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T2_CALC_OFFSET + FP4_SQ_X_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T8_CALC_OFFSET + FP2_ADDITION_TOTAL + fp_sub_offset + FP_SUBTRACTION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T8_CALC_OFFSET + FP2_ADDITION_TOTAL + fp_sub_offset + FP_SUBTRACTION_Y_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_INPUT_OFFSET + j*12 + i + 24*2])
+            )
+        }
+    }
+    add_subtraction_with_reduction_constranints(local_values, yield_constr, start_col + CYCLOTOMIC_SQ_T8_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T9_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T9_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + j*12 + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T8_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+        }
+        let val = if i == 0 {
+            FE::TWO
+        } else {
+            FE::ZERO
+        };
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_SQ_T9_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] *
+            (local_values[start_col + CYCLOTOMIC_SQ_T9_CALC_OFFSET + FP2_FP_Y_INPUT_OFFSET + i] - val)
+        );
+    }
+    add_fp2_fp_mul_constraints(local_values, next_values, yield_constr, start_col + CYCLOTOMIC_SQ_T9_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let (x_offset, fp_add_offset) = if j == 0 {
+                (X0_Y_REDUCE_OFFSET, FP2_ADDITION_0_OFFSET)
+            } else {
+                (X1_Y_REDUCE_OFFSET, FP2_ADDITION_1_OFFSET)
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_C2_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_C2_CALC_OFFSET + fp_add_offset + FP_ADDITION_X_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T9_CALC_OFFSET + x_offset + REDUCED_OFFSET + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_C2_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_C2_CALC_OFFSET + fp_add_offset + FP_ADDITION_Y_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T2_CALC_OFFSET + FP4_SQ_X_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+        }
+    }
+    add_addition_with_reduction_constranints(local_values, yield_constr, start_col + CYCLOTOMIC_SQ_C2_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let (fp_add_offset, x_offset) = if j == 0 {
+                (FP2_ADDITION_0_OFFSET, FP2_NON_RESIDUE_MUL_Z0_REDUCE_OFFSET)
+            } else {
+                (FP2_ADDITION_1_OFFSET, FP2_NON_RESIDUE_MUL_Z1_REDUCE_OFFSET)
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T10_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T10_CALC_OFFSET + fp_add_offset + FP_ADDITION_X_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T3_CALC_OFFSET + x_offset + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T10_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T10_CALC_OFFSET + fp_add_offset + FP_ADDITION_Y_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_INPUT_OFFSET + j*12 + i + 24*3])
+            )
+        }
+    }
+    add_addition_with_reduction_constranints(local_values, yield_constr, start_col + CYCLOTOMIC_SQ_T10_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T11_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T11_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + j*12 + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T10_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+        }
+        let val = if i == 0 {
+            FE::TWO
+        } else {
+            FE::ZERO
+        };
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_SQ_T11_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] *
+            (local_values[start_col + CYCLOTOMIC_SQ_T11_CALC_OFFSET + FP2_FP_Y_INPUT_OFFSET + i] - val)
+        );
+    }
+    add_fp2_fp_mul_constraints(local_values, next_values, yield_constr, start_col + CYCLOTOMIC_SQ_T11_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let (x_offset, y_offset, fp_add_offset) = if j == 0 {
+                (X0_Y_REDUCE_OFFSET, FP2_NON_RESIDUE_MUL_Z0_REDUCE_OFFSET, FP2_ADDITION_0_OFFSET)
+            } else {
+                (X1_Y_REDUCE_OFFSET, FP2_NON_RESIDUE_MUL_Z1_REDUCE_OFFSET, FP2_ADDITION_1_OFFSET)
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_C3_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_C3_CALC_OFFSET + fp_add_offset + FP_ADDITION_X_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T11_CALC_OFFSET + x_offset + REDUCED_OFFSET + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_C3_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_C3_CALC_OFFSET + fp_add_offset + FP_ADDITION_Y_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T3_CALC_OFFSET + y_offset + FP_SINGLE_REDUCED_OFFSET + i])
+                );
+        }
+    }
+    add_addition_with_reduction_constranints(local_values, yield_constr, start_col + CYCLOTOMIC_SQ_C3_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let fp_add_offset = if j == 0 {
+                FP2_ADDITION_0_OFFSET
+            } else {
+                FP2_ADDITION_1_OFFSET
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T12_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T12_CALC_OFFSET + fp_add_offset + FP_ADDITION_X_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T0_CALC_OFFSET + FP4_SQ_Y_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T12_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T12_CALC_OFFSET + fp_add_offset + FP_ADDITION_Y_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_INPUT_OFFSET + j*12 + i + 24*4])
+            )
+        }
+    }
+    add_addition_with_reduction_constranints(local_values, yield_constr, start_col + CYCLOTOMIC_SQ_T12_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T13_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T13_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + j*12 + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T12_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+        }
+        let val = if i == 0 {
+            FE::TWO
+        } else {
+            FE::ZERO
+        };
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_SQ_T13_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] *
+            (local_values[start_col + CYCLOTOMIC_SQ_T13_CALC_OFFSET + FP2_FP_Y_INPUT_OFFSET + i] - val)
+        );
+    }
+    add_fp2_fp_mul_constraints(local_values, next_values, yield_constr, start_col + CYCLOTOMIC_SQ_T13_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let (x_offset, fp_add_offset) = if j == 0 {
+                (X0_Y_REDUCE_OFFSET, FP2_ADDITION_0_OFFSET)
+            } else {
+                (X1_Y_REDUCE_OFFSET, FP2_ADDITION_1_OFFSET)
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_C4_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_C4_CALC_OFFSET + fp_add_offset + FP_ADDITION_X_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T13_CALC_OFFSET + x_offset + REDUCED_OFFSET + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_C4_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_C4_CALC_OFFSET + fp_add_offset + FP_ADDITION_Y_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T0_CALC_OFFSET + FP4_SQ_Y_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+        }
+    }
+    add_addition_with_reduction_constranints(local_values, yield_constr, start_col + CYCLOTOMIC_SQ_C4_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let fp_add_offset = if j == 0 {
+                FP2_ADDITION_0_OFFSET
+            } else {
+                FP2_ADDITION_1_OFFSET
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T14_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T14_CALC_OFFSET + fp_add_offset + FP_ADDITION_X_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T1_CALC_OFFSET + FP4_SQ_Y_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T14_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T14_CALC_OFFSET + fp_add_offset + FP_ADDITION_Y_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_INPUT_OFFSET + j*12 + i + 24*5])
+            )
+        }
+    }
+    add_addition_with_reduction_constranints(local_values, yield_constr, start_col + CYCLOTOMIC_SQ_T14_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_T15_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_T15_CALC_OFFSET + FP2_FP_X_INPUT_OFFSET + j*12 + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T14_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+        }
+        let val = if i == 0 {
+            FE::TWO
+        } else {
+            FE::ZERO
+        };
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_SQ_T15_CALC_OFFSET + FP2_FP_MUL_SELECTOR_OFFSET] *
+            (local_values[start_col + CYCLOTOMIC_SQ_T15_CALC_OFFSET + FP2_FP_Y_INPUT_OFFSET + i] - val)
+        );
+    }
+    add_fp2_fp_mul_constraints(local_values, next_values, yield_constr, start_col + CYCLOTOMIC_SQ_T15_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let (x_offset, fp_add_offset) = if j == 0 {
+                (X0_Y_REDUCE_OFFSET, FP2_ADDITION_0_OFFSET)
+            } else {
+                (X1_Y_REDUCE_OFFSET, FP2_ADDITION_1_OFFSET)
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_C5_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_C5_CALC_OFFSET + fp_add_offset + FP_ADDITION_X_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T15_CALC_OFFSET + x_offset + REDUCED_OFFSET + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + CYCLOTOMIC_SQ_C5_CALC_OFFSET + fp_add_offset + FP_ADDITION_CHECK_OFFSET] *
+                (local_values[start_col + CYCLOTOMIC_SQ_C5_CALC_OFFSET + fp_add_offset + FP_ADDITION_Y_OFFSET + i] -
+                local_values[start_col + CYCLOTOMIC_SQ_T1_CALC_OFFSET + FP4_SQ_Y_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+        }
+    }
+    add_addition_with_reduction_constranints(local_values, yield_constr, start_col + CYCLOTOMIC_SQ_C5_CALC_OFFSET, bit_selector);
+}
+
+pub fn add_cyclotomic_exp_constraints<F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize
+>(
+    local_values: &[P],
+    next_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize,
+    op_selector: Option<P>,
+) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>
+{
+    for i in 0..24*3*2 {
+        yield_constr.constraint_transition(
+            op_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_EXP_SELECTOR_OFFSET] *
+            (local_values[start_col + INPUT_OFFSET + i] -
+            next_values[start_col + INPUT_OFFSET + i])
+        );
+    }
+    for i in 0..24*3*2 {
+        let val = if i == 0 {
+            P::ONES
+        } else {
+            P::ZEROS
+        };
+        yield_constr.constraint(
+            op_selector.unwrap_or(P::ONES) *
+            local_values[start_col + CYCLOTOMIC_EXP_START_ROW] *
+            (local_values[start_col + Z_OFFSET + i] - val)
+        );
+    }
+
+    let bit1 = (local_values[start_col + BIT1_SELECTOR_OFFSET]) * op_selector.unwrap_or(P::ONES);
+    let bit0 = (P::ONES - local_values[start_col + BIT1_SELECTOR_OFFSET]) * op_selector.unwrap_or(P::ONES);
+
+    for i in 0..12 {
+        for j in 0..6 {
+            let c_offset = if j == 0 {
+                CYCLOTOMIC_SQ_C0_CALC_OFFSET
+            } else if j == 1 {
+                CYCLOTOMIC_SQ_C1_CALC_OFFSET
+            } else if j == 2 {
+                CYCLOTOMIC_SQ_C2_CALC_OFFSET
+            } else if j == 3 {
+                CYCLOTOMIC_SQ_C3_CALC_OFFSET
+            } else if j == 4 {
+                CYCLOTOMIC_SQ_C4_CALC_OFFSET
+            } else {
+                CYCLOTOMIC_SQ_C5_CALC_OFFSET
+            };
+            for k in 0..2 {
+                yield_constr.constraint_transition(
+                    bit0 *
+                    local_values[start_col + CYCLOTOMIC_EXP_SELECTOR_OFFSET] *
+                    next_values[start_col + FIRST_ROW_SELECTOR_OFFSET] *
+                    (next_values[start_col + Z_OFFSET + j*24 + k*12 + i] -
+                    local_values[start_col + Z_CYCLOTOMIC_SQ_OFFSET + c_offset + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*k + FP_SINGLE_REDUCED_OFFSET + i])
+                );
+            }
+        }
+    }
+
+    for i in 0..12 {
+        for j in 0..6 {
+            yield_constr.constraint_transition(
+                bit1 *
+                local_values[start_col + CYCLOTOMIC_EXP_SELECTOR_OFFSET] *
+                next_values[start_col + FIRST_ROW_SELECTOR_OFFSET] *
+                (next_values[start_col + Z_OFFSET + j*12 + i] -
+                local_values[start_col + Z_MUL_INPUT_OFFSET + FP12_MUL_X_CALC_OFFSET + FP6_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+            yield_constr.constraint_transition(
+                bit1 *
+                local_values[start_col + CYCLOTOMIC_EXP_SELECTOR_OFFSET] *
+                next_values[start_col + FIRST_ROW_SELECTOR_OFFSET] *
+                (next_values[start_col + Z_OFFSET + j*12 + i + 24*3] -
+                local_values[start_col + Z_MUL_INPUT_OFFSET + FP12_MUL_Y_CALC_OFFSET + FP6_ADDITION_TOTAL + FP6_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i])
+            );
+        }
+    }
+
+    for i in 0..24*3*2 {
+        yield_constr.constraint(
+            bit0 *
+            local_values[start_col + Z_CYCLOTOMIC_SQ_OFFSET + CYCLOTOMIC_SQ_SELECTOR_OFFSET] *
+            (local_values[start_col + Z_CYCLOTOMIC_SQ_OFFSET + CYCLOTOMIC_SQ_INPUT_OFFSET + i] -
+            local_values[start_col + Z_OFFSET + i])
+        );
+    }
+    add_cyclotomic_sq_constraints(local_values, next_values, yield_constr, start_col + Z_CYCLOTOMIC_SQ_OFFSET, Some(bit0));
+
+    for i in 0..24*3*2 {
+        yield_constr.constraint(
+            bit1 *
+            local_values[start_col + Z_MUL_INPUT_OFFSET + FP12_MUL_SELECTOR_OFFSET] *
+            (local_values[start_col + Z_MUL_INPUT_OFFSET + FP12_MUL_X_INPUT_OFFSET + i] -
+            local_values[start_col + Z_OFFSET + i])
+        );
+        yield_constr.constraint(
+            bit1 *
+            local_values[start_col + Z_MUL_INPUT_OFFSET + FP12_MUL_SELECTOR_OFFSET] *
+            (local_values[start_col + Z_MUL_INPUT_OFFSET + FP12_MUL_Y_INPUT_OFFSET + i] -
+            local_values[start_col + INPUT_OFFSET + i])
+        );
+    }
+    add_fp12_multiplication_constraints(local_values, next_values, yield_constr, start_col + Z_MUL_INPUT_OFFSET, Some(bit1));
+
+    for i in 0..12 {
+        for j in 0..6 {
+            let c_offset = if j == 0 {
+                CYCLOTOMIC_SQ_C0_CALC_OFFSET
+            } else if j == 1 {
+                CYCLOTOMIC_SQ_C1_CALC_OFFSET
+            } else if j == 2 {
+                CYCLOTOMIC_SQ_C2_CALC_OFFSET
+            } else if j == 3 {
+                CYCLOTOMIC_SQ_C3_CALC_OFFSET
+            } else if j == 4 {
+                CYCLOTOMIC_SQ_C4_CALC_OFFSET
+            } else {
+                CYCLOTOMIC_SQ_C5_CALC_OFFSET
+            };
+            for k in 0..2 {
+                yield_constr.constraint_transition(
+                    op_selector.unwrap_or(P::ONES) *
+                    local_values[start_col + CYCLOTOMIC_EXP_SELECTOR_OFFSET] *
+                    next_values[start_col + RES_ROW_SELECTOR_OFFSET] *
+                    (next_values[start_col + Z_OFFSET + j*24 + k*12 + i] -
+                    local_values[start_col + Z_CYCLOTOMIC_SQ_OFFSET + c_offset + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*k + FP_SINGLE_REDUCED_OFFSET + i])
+                );
+            }
+        }
+    }
+}
+
+pub fn add_fp12_forbenius_map_constraints<F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize
+>(
+    local_values: &[P],
+    next_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize,
+    bit_selector: Option<P>,
+) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    for i in 0..24*3*2 {
+        yield_constr.constraint_transition(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + FP12_FORBENIUS_MAP_SELECTOR_OFFSET] *
+            (local_values[start_col + FP12_FORBENIUS_MAP_INPUT_OFFSET + i] -
+            next_values[start_col + FP12_FORBENIUS_MAP_INPUT_OFFSET + i])
+        );
+    }
+    yield_constr.constraint_transition(
+        bit_selector.unwrap_or(P::ONES) *
+        local_values[start_col + FP12_FORBENIUS_MAP_SELECTOR_OFFSET] *
+        (local_values[start_col + FP12_FORBENIUS_MAP_POW_OFFSET] -
+        next_values[start_col + FP12_FORBENIUS_MAP_POW_OFFSET])
+    );
+    yield_constr.constraint(
+        bit_selector.unwrap_or(P::ONES) *
+        local_values[start_col + FP12_FORBENIUS_MAP_SELECTOR_OFFSET] *
+        (local_values[start_col + FP12_FORBENIUS_MAP_DIV_OFFSET] * FE::from_canonical_usize(12) +
+        local_values[start_col + FP12_FORBENIUS_MAP_REM_OFFSET] -
+        local_values[start_col + FP12_FORBENIUS_MAP_POW_OFFSET])
+    );
+    let bit0 = local_values[start_col + FP12_FORBENIUS_MAP_BIT0_OFFSET];
+    let bit1 = local_values[start_col + FP12_FORBENIUS_MAP_BIT1_OFFSET];
+    let bit2 = local_values[start_col + FP12_FORBENIUS_MAP_BIT2_OFFSET];
+    let bit3 = local_values[start_col + FP12_FORBENIUS_MAP_BIT3_OFFSET];
+    yield_constr.constraint(
+        bit_selector.unwrap_or(P::ONES) *
+        local_values[start_col + FP12_FORBENIUS_MAP_SELECTOR_OFFSET] *
+        (bit0 +
+        bit1 * FE::TWO +
+        bit2 * FE::from_canonical_usize(4) +
+        bit3 * FE::from_canonical_usize(8) -
+        local_values[start_col + FP12_FORBENIUS_MAP_REM_OFFSET])
+    );
+    let forbenius_coefficients = Fp12::forbenius_coefficients().iter().map(|fp2| fp2.get_u32_slice().concat().try_into().unwrap()).collect::<Vec<[u32; 24]>>();
+    let y = (0..24).map(|i|
+        (P::ONES - bit0) * (P::ONES - bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients[0][i]) +
+        (bit0) * (P::ONES - bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients[1][i]) +
+        (P::ONES - bit0) * (bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients[2][i]) +
+        (bit0) * (bit1) * (P::ONES - bit2) * FE::from_canonical_u32(forbenius_coefficients[3][i]) +
+        (P::ONES - bit0) * (P::ONES - bit1) * (bit2) * FE::from_canonical_u32(forbenius_coefficients[4][i]) +
+        (bit0) * (P::ONES - bit1) * (bit2) * FE::from_canonical_u32(forbenius_coefficients[5][i]) +
+        (P::ONES - bit0) * (bit1) * (bit2) * FE::from_canonical_u32(forbenius_coefficients[6][i])
+    ).collect::<Vec<P>>();
+    yield_constr.constraint(
+        bit_selector.unwrap_or(P::ONES) *
+        local_values[start_col + FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_SELECTOR_OFFSET] *
+        (local_values[start_col + FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_POW_OFFSET] -
+        local_values[start_col + FP12_FORBENIUS_MAP_POW_OFFSET])
+    );
+    for i in 0..24*3 {
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_SELECTOR_OFFSET] *
+            (local_values[start_col + FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_INPUT_OFFSET + i] -
+            local_values[start_col + FP12_FORBENIUS_MAP_INPUT_OFFSET + i])
+        );
+    }
+    add_fp6_forbenius_map_constraints(local_values, next_values, yield_constr, start_col + FP12_FORBENIUS_MAP_R0_CALC_OFFSET, bit_selector);
+
+    yield_constr.constraint(
+        bit_selector.unwrap_or(P::ONES) *
+        local_values[start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + FP6_FORBENIUS_MAP_SELECTOR_OFFSET] *
+        (local_values[start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + FP6_FORBENIUS_MAP_POW_OFFSET] -
+        local_values[start_col + FP12_FORBENIUS_MAP_POW_OFFSET])
+    );
+    for i in 0..24*3 {
+        yield_constr.constraint(
+            bit_selector.unwrap_or(P::ONES) *
+            local_values[start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + FP6_FORBENIUS_MAP_SELECTOR_OFFSET] *
+            (local_values[start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + FP6_FORBENIUS_MAP_INPUT_OFFSET + i] -
+            local_values[start_col + FP12_FORBENIUS_MAP_INPUT_OFFSET + i + 24*3])
+        );
+    }
+    add_fp6_forbenius_map_constraints(local_values, next_values, yield_constr, start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let offset = if j == 0 {
+                FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_INPUT_OFFSET
+            } else {
+                FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS + REDUCED_OFFSET
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + FP12_FORBENIUS_MAP_C0_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (local_values[start_col + FP12_FORBENIUS_MAP_C0_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + j*12 + i] -
+                local_values[start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + offset + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + FP12_FORBENIUS_MAP_C0_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (local_values[start_col + FP12_FORBENIUS_MAP_C0_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + j*12 + i] -
+                y[j*12 + i])
+            );
+        }
+    }
+    add_fp2_mul_constraints(local_values, next_values, yield_constr, start_col + FP12_FORBENIUS_MAP_C0_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let offset = if j == 0 {
+                FP6_FORBENIUS_MAP_Y_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
+            } else {
+                FP6_FORBENIUS_MAP_Y_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + FP12_FORBENIUS_MAP_C1_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (local_values[start_col + FP12_FORBENIUS_MAP_C1_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + j*12 + i] -
+                local_values[start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + offset + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + FP12_FORBENIUS_MAP_C1_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (local_values[start_col + FP12_FORBENIUS_MAP_C1_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + j*12 + i] -
+                y[j*12 + i])
+            );
+        }
+    }
+    add_fp2_mul_constraints(local_values, next_values, yield_constr, start_col + FP12_FORBENIUS_MAP_C1_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        for j in 0..2 {
+            let offset = if j == 0 {
+                FP6_FORBENIUS_MAP_Z_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
+            } else {
+                FP6_FORBENIUS_MAP_Z_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
+            };
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + FP12_FORBENIUS_MAP_C2_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (local_values[start_col + FP12_FORBENIUS_MAP_C2_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + j*12 + i] -
+                local_values[start_col + FP12_FORBENIUS_MAP_C0C1C2_CALC_OFFSET + offset + i])
+            );
+            yield_constr.constraint(
+                bit_selector.unwrap_or(P::ONES) *
+                local_values[start_col + FP12_FORBENIUS_MAP_C2_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET] *
+                (local_values[start_col + FP12_FORBENIUS_MAP_C2_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + j*12 + i] -
+                y[j*12 + i])
+            );
+        }
+    }
+    add_fp2_mul_constraints(local_values, next_values, yield_constr, start_col + FP12_FORBENIUS_MAP_C2_CALC_OFFSET, bit_selector);
+}
+
+pub fn add_fp12_conjugate_constraints<F: RichField + Extendable<D>,
+    const D: usize,
+    FE,
+    P,
+    const D2: usize,
+>(
+    local_values: &[P],
+    yield_constr: &mut ConstraintConsumer<P>,
+    start_col: usize,
+    bit_selector: Option<P>,
+) where
+    FE: FieldExtension<D2, BaseField = F>,
+    P: PackedField<Scalar = FE>,
+{
+    for i in 0..12 {
+        for j in 0..3 {
+            let fp2_offset = if j == 0 {
+                FP6_ADDITION_0_OFFSET
+            } else if j == 1 {
+                FP6_ADDITION_1_OFFSET
+            } else {
+                FP6_ADDITION_2_OFFSET
+            };
+            for k in 0..2 {
+                let fp_offset = if k == 0 {
+                    FP2_ADDITION_0_OFFSET
+                } else {
+                    FP2_ADDITION_1_OFFSET
+                };
+                yield_constr.constraint(
+                    bit_selector.unwrap_or(P::ONES) *
+                    local_values[start_col + FP12_CONJUGATE_ADDITIION_OFFSET + fp2_offset + fp_offset + FP_ADDITION_CHECK_OFFSET] *
+                    (local_values[start_col + FP12_CONJUGATE_ADDITIION_OFFSET + fp2_offset + fp_offset + FP_ADDITION_X_OFFSET + i] -
+                    local_values[start_col + FP12_CONJUGATE_INPUT_OFFSET + (j+3)*24 + k*12 + i])
+                );
+                yield_constr.constraint(
+                    bit_selector.unwrap_or(P::ONES) *
+                    local_values[start_col + FP12_CONJUGATE_ADDITIION_OFFSET + fp2_offset + fp_offset + FP_ADDITION_CHECK_OFFSET] *
+                    (local_values[start_col + FP12_CONJUGATE_ADDITIION_OFFSET + fp2_offset + fp_offset + FP_ADDITION_Y_OFFSET + i] -
+                    local_values[start_col + FP12_CONJUGATE_OUTPUT_OFFSET + (j+3)*24 + k*12 + i])
+                );
+            }
+        }
+    }
+    add_negate_fp6_constraints(local_values, yield_constr, start_col + FP12_CONJUGATE_ADDITIION_OFFSET, bit_selector);
 }
