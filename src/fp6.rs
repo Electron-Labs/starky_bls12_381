@@ -3051,3 +3051,175 @@ pub fn add_fp6_forbenius_map_constraints<F: RichField + Extendable<D>,
     }
     add_fp2_mul_constraints(local_values, next_values, yield_constr, start_col + FP6_FORBENIUS_MAP_Z_CALC_OFFSET, bit_selector);
 }
+
+pub fn add_fp6_forbenius_map_constraints_ext_circuit<F: RichField + Extendable<D>,
+    const D: usize,
+>(
+    builder: &mut CircuitBuilder<F, D>,
+    yield_constr: &mut RecursiveConstraintConsumer<F, D>,
+    local_values: &[ExtensionTarget<D>],
+    next_values: &[ExtensionTarget<D>],
+    start_col: usize,
+    bit_selector: Option<ExtensionTarget<D>>,
+) {
+    let bit_selector_val = bit_selector.unwrap_or(builder.constant_extension(F::Extension::ONE));
+    let tmp = builder.mul_extension(bit_selector_val, local_values[start_col + FP6_FORBENIUS_MAP_SELECTOR_OFFSET]);
+
+    for i in 0..24*3 {
+        let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_INPUT_OFFSET + i], next_values[start_col + FP6_FORBENIUS_MAP_INPUT_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint_transition(builder, c);
+    }
+    let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_POW_OFFSET], next_values[start_col + FP6_FORBENIUS_MAP_POW_OFFSET]);
+    let c = builder.mul_extension(tmp, c);
+    yield_constr.constraint_transition(builder, c);
+
+    let six = builder.constant_extension(F::Extension::from_canonical_u32(6));
+    let c = builder.mul_extension(local_values[start_col + FP6_FORBENIUS_MAP_DIV_OFFSET], six);
+    let c = builder.add_extension(c, local_values[start_col + FP6_FORBENIUS_MAP_REM_OFFSET]);
+    let c = builder.sub_extension(c, local_values[start_col + FP6_FORBENIUS_MAP_POW_OFFSET]);
+    let c = builder.mul_extension(tmp, c);
+    yield_constr.constraint(builder, c);
+
+    let bit0 = local_values[start_col + FP6_FORBENIUS_MAP_BIT0_OFFSET];
+    let bit1 = local_values[start_col + FP6_FORBENIUS_MAP_BIT1_OFFSET];
+    let bit2 = local_values[start_col + FP6_FORBENIUS_MAP_BIT2_OFFSET];
+
+    let one = builder.constant_extension(F::Extension::ONE);
+    let one_bit0 = builder.sub_extension(one, bit0);
+    let one_bit1 = builder.sub_extension(one, bit1);
+
+    let two = builder.constant_extension(F::Extension::TWO);
+    let four = builder.constant_extension(F::Extension::from_canonical_u32(4));
+    let mul1 = builder.mul_extension(bit1, two);
+    let mul2 = builder.mul_extension(bit2, four);
+    let c = builder.add_extension(bit0, mul1);
+    let c = builder.add_extension(c, mul2);
+    let c = builder.sub_extension(c, local_values[start_col + FP6_FORBENIUS_MAP_REM_OFFSET]);
+    let c = builder.mul_extension(tmp, c);
+    yield_constr.constraint(builder, c);
+
+    let forbenius_coefficients_1 = Fp6::forbenius_coefficients_1().iter().map(|fp2| fp2.get_u32_slice().concat().try_into().unwrap()).collect::<Vec<[u32; 24]>>();
+    let forbenius_coefficients_2 = Fp6::forbenius_coefficients_2().iter().map(|fp2| fp2.get_u32_slice().concat().try_into().unwrap()).collect::<Vec<[u32; 24]>>();
+    let y1 = (0..24).map(|i| {
+        let const1 = builder.constant_extension(F::Extension::from_canonical_u32(forbenius_coefficients_1[0][i]));
+        let const2 = builder.constant_extension(F::Extension::from_canonical_u32(forbenius_coefficients_1[1][i]));
+        let const3 = builder.constant_extension(F::Extension::from_canonical_u32(forbenius_coefficients_1[2][i]));
+        let const4 = builder.constant_extension(F::Extension::from_canonical_u32(forbenius_coefficients_1[3][i]));
+
+        let bit = builder.mul_extension(one_bit0, one_bit1);
+        let mul1 = builder.mul_extension(bit, const1);
+
+        let bit = builder.mul_extension(bit0, one_bit1);
+        let mul2 = builder.mul_extension(bit, const2);
+
+        let bit = builder.mul_extension(one_bit0, bit1);
+        let mul3 = builder.mul_extension(bit, const3);
+
+        let bit = builder.mul_extension(bit0, bit1);
+        let mul4 = builder.mul_extension(bit, const4);
+
+        let c = builder.add_extension(mul1, mul2);
+        let c = builder.add_extension(c, mul3);
+        let c = builder.add_extension(c, mul4);
+        c
+    }).collect::<Vec<ExtensionTarget<D>>>();
+    let y2 = (0..24).map(|i| {
+        let const1 = builder.constant_extension(F::Extension::from_canonical_u32(forbenius_coefficients_2[0][i]));
+        let const2 = builder.constant_extension(F::Extension::from_canonical_u32(forbenius_coefficients_2[1][i]));
+        let const3 = builder.constant_extension(F::Extension::from_canonical_u32(forbenius_coefficients_2[2][i]));
+        let const4 = builder.constant_extension(F::Extension::from_canonical_u32(forbenius_coefficients_2[3][i]));
+
+        let bit = builder.mul_extension(one_bit0, one_bit1);
+        let mul1 = builder.mul_extension(bit, const1);
+
+        let bit = builder.mul_extension(bit0, one_bit1);
+        let mul2 = builder.mul_extension(bit, const2);
+
+        let bit = builder.mul_extension(one_bit0, bit1);
+        let mul3 = builder.mul_extension(bit, const3);
+
+        let bit = builder.mul_extension(bit0, bit1);
+        let mul4 = builder.mul_extension(bit, const4);
+
+        let c = builder.add_extension(mul1, mul2);
+        let c = builder.add_extension(c, mul3);
+        let c = builder.add_extension(c, mul4);
+        c
+    }).collect::<Vec<ExtensionTarget<D>>>();
+
+    let tmp = builder.mul_extension(bit_selector_val, local_values[start_col + FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_SELECTOR_OFFSET]);
+    let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_POW_OFFSET], local_values[start_col + FP6_FORBENIUS_MAP_POW_OFFSET]);
+    let c = builder.mul_extension(tmp, c);
+    yield_constr.constraint(builder, c);
+    for i in 0..24 {
+        let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_INPUT_OFFSET + i], local_values[start_col + FP6_FORBENIUS_MAP_INPUT_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+    }
+    add_fp2_forbenius_map_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + FP6_FORBENIUS_MAP_X_CALC_OFFSET, bit_selector);
+
+    let tmp = builder.mul_extension(bit_selector_val, local_values[start_col + FP6_FORBENIUS_MAP_T0_CALC_OFFSET + FP2_FORBENIUS_MAP_SELECTOR_OFFSET]);
+    let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_T0_CALC_OFFSET + FP2_FORBENIUS_MAP_POW_OFFSET], local_values[start_col + FP6_FORBENIUS_MAP_POW_OFFSET]);
+    let c = builder.mul_extension(tmp, c);
+    yield_constr.constraint(builder, c);
+    for i in 0..24 {
+        let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_T0_CALC_OFFSET + FP2_FORBENIUS_MAP_INPUT_OFFSET + i], local_values[start_col + FP6_FORBENIUS_MAP_INPUT_OFFSET + i + 24]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+    }
+    add_fp2_forbenius_map_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + FP6_FORBENIUS_MAP_T0_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        let tmp = builder.mul_extension(bit_selector_val, local_values[start_col + FP6_FORBENIUS_MAP_Y_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET]);
+
+        let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_Y_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i], local_values[start_col + FP6_FORBENIUS_MAP_T0_CALC_OFFSET + FP2_FORBENIUS_MAP_INPUT_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_Y_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i + 12], local_values[start_col + FP6_FORBENIUS_MAP_T0_CALC_OFFSET + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS + REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_Y_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i], y1[i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_Y_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i + 12], y1[i + 12]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+    }
+    add_fp2_mul_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + FP6_FORBENIUS_MAP_Y_CALC_OFFSET, bit_selector);
+
+    let tmp = builder.mul_extension(bit_selector_val, local_values[start_col + FP6_FORBENIUS_MAP_T1_CALC_OFFSET + FP2_FORBENIUS_MAP_SELECTOR_OFFSET]);
+    let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_T1_CALC_OFFSET + FP2_FORBENIUS_MAP_POW_OFFSET], local_values[start_col + FP6_FORBENIUS_MAP_POW_OFFSET]);
+    let c = builder.mul_extension(tmp, c);
+    yield_constr.constraint(builder, c);
+    for i in 0..24 {
+        let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_T1_CALC_OFFSET + FP2_FORBENIUS_MAP_INPUT_OFFSET + i], local_values[start_col + FP6_FORBENIUS_MAP_INPUT_OFFSET + i + 48]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+    }
+    add_fp2_forbenius_map_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + FP6_FORBENIUS_MAP_T1_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        let tmp = builder.mul_extension(bit_selector_val, local_values[start_col + FP6_FORBENIUS_MAP_Z_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET]);
+
+        let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_Z_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i], local_values[start_col + FP6_FORBENIUS_MAP_T1_CALC_OFFSET + FP2_FORBENIUS_MAP_INPUT_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_Z_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i + 12], local_values[start_col + FP6_FORBENIUS_MAP_T1_CALC_OFFSET + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS + REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_Z_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i], y2[i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP6_FORBENIUS_MAP_Z_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i + 12], y2[i + 12]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+    }
+    add_fp2_mul_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + FP6_FORBENIUS_MAP_Z_CALC_OFFSET, bit_selector);
+}

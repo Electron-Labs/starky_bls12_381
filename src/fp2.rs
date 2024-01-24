@@ -1975,6 +1975,184 @@ pub fn add_fp4_sq_constraints<F: RichField + Extendable<D>,
     add_subtraction_with_reduction_constranints(local_values, yield_constr, start_col + FP4_SQ_Y_CALC_OFFSET, bit_selector);
 }
 
+pub fn add_fp4_sq_constraints_ext_circuit<
+    F: RichField + Extendable<D>,
+    const D: usize,
+>(
+    builder: &mut CircuitBuilder<F, D>,
+    yield_constr: &mut RecursiveConstraintConsumer<F, D>,
+    local_values: &[ExtensionTarget<D>],
+    next_values: &[ExtensionTarget<D>],
+    start_col: usize,
+    bit_selector: Option<ExtensionTarget<D>>,
+){
+    let bit_selector_val = bit_selector.unwrap_or(builder.constant_extension(F::Extension::ONE));
+
+    for i in 0..24 {
+        let tmp = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_SELECTOR_OFFSET]);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_INPUT_X_OFFSET + i], next_values[start_col + FP4_SQ_INPUT_X_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint_transition(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_INPUT_Y_OFFSET + i], next_values[start_col + FP4_SQ_INPUT_Y_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint_transition(builder, c);
+    }
+
+    for i in 0..24 {
+        let tmp = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_T0_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET]);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T0_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i], local_values[start_col + FP4_SQ_INPUT_X_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T0_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i], local_values[start_col + FP4_SQ_INPUT_X_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+    }
+    add_fp2_mul_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + FP4_SQ_T0_CALC_OFFSET, bit_selector);
+
+    for i in 0..24 {
+        let tmp = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_T1_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET]);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T1_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i], local_values[start_col + FP4_SQ_INPUT_Y_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T1_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i], local_values[start_col + FP4_SQ_INPUT_Y_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+    }
+    add_fp2_mul_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + FP4_SQ_T1_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        let tmp = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_T2_CALC_OFFSET + FP2_NON_RESIDUE_MUL_CHECK_OFFSET]);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T2_CALC_OFFSET + FP2_NON_RESIDUE_MUL_INPUT_OFFSET + i], local_values[start_col + FP4_SQ_T1_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T2_CALC_OFFSET + FP2_NON_RESIDUE_MUL_INPUT_OFFSET + 12 + i], local_values[start_col + FP4_SQ_T1_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+    }
+    add_non_residue_multiplication_constraints_ext_circuit(builder, yield_constr, local_values, start_col + FP4_SQ_T2_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        let tmp1 = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_X_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET]);
+        let tmp2 = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_X_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET]);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_X_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i], local_values[start_col + FP4_SQ_T2_CALC_OFFSET + FP2_NON_RESIDUE_MUL_Z0_REDUCE_OFFSET + FP_SINGLE_REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp1, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_X_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_Y_OFFSET + i], local_values[start_col + FP4_SQ_T0_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp1, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_X_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i], local_values[start_col + FP4_SQ_T2_CALC_OFFSET + FP2_NON_RESIDUE_MUL_Z1_REDUCE_OFFSET + FP_SINGLE_REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp2, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_X_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_Y_OFFSET + i], local_values[start_col + FP4_SQ_T0_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp2, c);
+        yield_constr.constraint(builder, c);
+    }
+    add_addition_with_reduction_constraints_ext_circuit(builder, yield_constr, local_values, start_col + FP4_SQ_X_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        let tmp1 = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_T3_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET]);
+        let tmp2 = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_T3_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET]);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T3_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i], local_values[start_col + FP4_SQ_INPUT_X_OFFSET + i]);
+        let c = builder.mul_extension(tmp1, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T3_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_Y_OFFSET + i], local_values[start_col + FP4_SQ_INPUT_Y_OFFSET + i]);
+        let c = builder.mul_extension(tmp1, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T3_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i], local_values[start_col + FP4_SQ_INPUT_X_OFFSET + 12 + i]);
+        let c = builder.mul_extension(tmp2, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T3_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_Y_OFFSET + i], local_values[start_col + FP4_SQ_INPUT_Y_OFFSET + 12 + i]);
+        let c = builder.mul_extension(tmp2, c);
+        yield_constr.constraint(builder, c);
+    }
+    add_addition_with_reduction_constraints_ext_circuit(builder, yield_constr, local_values, start_col + FP4_SQ_T3_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        let tmp = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_T4_CALC_OFFSET + FP2_FP2_SELECTOR_OFFSET]);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T4_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i], local_values[start_col + FP4_SQ_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T4_CALC_OFFSET + FP2_FP2_X_INPUT_OFFSET + i + 12], local_values[start_col + FP4_SQ_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL) + FP_SINGLE_REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T4_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i], local_values[start_col + FP4_SQ_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T4_CALC_OFFSET + FP2_FP2_Y_INPUT_OFFSET + i + 12], local_values[start_col + FP4_SQ_T3_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL) + FP_SINGLE_REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+    }
+    add_fp2_mul_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + FP4_SQ_T4_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        let tmp1 = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_T5_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET]);
+        let tmp2 = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_T5_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_CHECK_OFFSET]);
+        let tmp3 = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_T5_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET]);
+        let tmp4 = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_T5_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_CHECK_OFFSET]);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T5_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i], local_values[start_col + FP4_SQ_T4_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp1, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T5_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_Y_OFFSET + i], local_values[start_col + FP4_SQ_T0_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp2, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T5_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i], local_values[start_col + FP4_SQ_T4_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp3, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_T5_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_Y_OFFSET + i], local_values[start_col + FP4_SQ_T0_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp4, c);
+        yield_constr.constraint(builder, c);
+    }
+    add_subtraction_with_reduction_constraints_ext_circuit(builder, yield_constr, local_values, start_col + FP4_SQ_T5_CALC_OFFSET, bit_selector);
+
+    for i in 0..12 {
+        let tmp1 = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_Y_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_CHECK_OFFSET]);
+        let tmp2 = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_Y_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_CHECK_OFFSET]);
+        let tmp3 = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_Y_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_CHECK_OFFSET]);
+        let tmp4 = builder.mul_extension(bit_selector_val, local_values[start_col + FP4_SQ_Y_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_CHECK_OFFSET]);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_Y_CALC_OFFSET + FP2_ADDITION_0_OFFSET + FP_ADDITION_X_OFFSET + i], local_values[start_col + FP4_SQ_T5_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp1, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_Y_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_Y_OFFSET + i], local_values[start_col + FP4_SQ_T1_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp2, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_Y_CALC_OFFSET + FP2_ADDITION_1_OFFSET + FP_ADDITION_X_OFFSET + i], local_values[start_col + FP4_SQ_T5_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL) + FP_SINGLE_REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp3, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP4_SQ_Y_CALC_OFFSET + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_Y_OFFSET + i], local_values[start_col + FP4_SQ_T1_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i]);
+        let c = builder.mul_extension(tmp4, c);
+        yield_constr.constraint(builder, c);
+    }
+    add_subtraction_with_reduction_constraints_ext_circuit(builder, yield_constr, local_values, start_col + FP4_SQ_Y_CALC_OFFSET, bit_selector);
+}
+
 pub fn add_fp2_forbenius_map_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -2041,4 +2219,72 @@ pub fn add_fp2_forbenius_map_constraints<F: RichField + Extendable<D>,
     }
     add_reduce_constraints(local_values, next_values, yield_constr, start_col + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS, start_col + FP2_FORBENIUS_MAP_SELECTOR_OFFSET, bit_selector);
     add_range_check_constraints(local_values, yield_constr, start_col + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS + REDUCTION_TOTAL, bit_selector);
+}
+
+pub fn add_fp2_forbenius_map_constraints_ext_circuit<
+    F: RichField + Extendable<D>,
+    const D: usize,
+    >(
+    builder: &mut CircuitBuilder<F, D>,
+    yield_constr: &mut RecursiveConstraintConsumer<F, D>,
+    local_values: &[ExtensionTarget<D>],
+    next_values: &[ExtensionTarget<D>],
+    start_col: usize,
+    bit_selector: Option<ExtensionTarget<D>>,
+){
+    let bit_selector_val = bit_selector.unwrap_or(builder.constant_extension(F::Extension::ONE));
+    let tmp = builder.mul_extension(bit_selector_val, local_values[start_col + FP2_FORBENIUS_MAP_SELECTOR_OFFSET]);
+
+    for i in 0..24 {
+        let c = builder.sub_extension(local_values[start_col + FP2_FORBENIUS_MAP_INPUT_OFFSET + i], next_values[start_col + FP2_FORBENIUS_MAP_INPUT_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint_transition(builder, c);
+    }
+
+    let c = builder.sub_extension(local_values[start_col + FP2_FORBENIUS_MAP_POW_OFFSET], next_values[start_col + FP2_FORBENIUS_MAP_POW_OFFSET]);
+    let c = builder.mul_extension(tmp, c);
+    yield_constr.constraint_transition(builder, c);
+
+    let two = builder.constant_extension(F::Extension::TWO);
+    let c = builder.mul_extension(local_values[start_col + FP2_FORBENIUS_MAP_DIV_OFFSET], two);
+    let c = builder.add_extension(c, local_values[start_col + FP2_FORBENIUS_MAP_REM_OFFSET]);
+    let c = builder.sub_extension(c, local_values[start_col + FP2_FORBENIUS_MAP_POW_OFFSET]);
+    let c = builder.mul_extension(tmp, c);
+    yield_constr.constraint(builder, c);
+
+    let bit = local_values[start_col + FP2_FORBENIUS_MAP_REM_OFFSET];
+    let one = builder.constant_extension(F::Extension::ONE);
+    let forbenius_coefficients = Fp2::forbenius_coefficients().iter().map(|fp| fp.0).collect::<Vec<[u32; 12]>>();
+    let y = (0..12).map(|i| {
+        let sub = builder.sub_extension(one, bit);
+        let const1 = builder.constant_extension(F::Extension::from_canonical_u32(forbenius_coefficients[0][i]));
+        let mul1 = builder.mul_extension(sub, const1);
+
+        let const2 = builder.constant_extension(F::Extension::from_canonical_u32(forbenius_coefficients[1][i]));
+        let mul2 = builder.mul_extension(bit, const2);
+
+        let c = builder.add_extension(mul1, mul2);
+        c
+    }).collect::<Vec<ExtensionTarget<D>>>();
+    for i in 0..12 {
+        let tmp = builder.mul_extension(bit_selector_val, local_values[start_col + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + MULTIPLICATION_SELECTOR_OFFSET]);
+
+        let c = builder.sub_extension(local_values[start_col + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + X_INPUT_OFFSET + i], local_values[start_col + FP2_FORBENIUS_MAP_INPUT_OFFSET + 12 + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[start_col + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + Y_INPUT_OFFSET + i], y[i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+    }
+    add_multiplication_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + FP2_FORBENIUS_MAP_T0_CALC_OFFSET, bit_selector);
+    for i in 0..24 {
+        let tmp = builder.mul_extension(bit_selector_val, local_values[start_col + FP2_FORBENIUS_MAP_MUL_RES_ROW]);
+
+        let c = builder.sub_extension(local_values[start_col + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + SUM_OFFSET + i], local_values[start_col + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS + REDUCE_X_OFFSET + i]);
+        let c = builder.mul_extension(tmp, c);
+        yield_constr.constraint(builder, c);
+    }
+    add_reduce_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS, start_col + FP2_FORBENIUS_MAP_SELECTOR_OFFSET, bit_selector);
+    add_range_check_constraints_ext_circuit(builder, yield_constr, local_values, start_col + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS + REDUCTION_TOTAL, bit_selector);
 }

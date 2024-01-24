@@ -365,6 +365,81 @@ fn add_constraints_forbenius<F: RichField + Extendable<D>,
     }
 }
 
+pub fn add_constraints_forbenius_ext_circuit<F: RichField + Extendable<D>,
+    const D: usize,
+>(
+    builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
+    yield_constr: &mut starky::constraint_consumer::RecursiveConstraintConsumer<F, D>,
+    local_values: &[ExtensionTarget<D>],
+    next_values: &[ExtensionTarget<D>],
+    row: usize,
+    input_col: usize,
+    output_col: usize,
+    pow: usize,
+) {
+    for i in row..row + FP12_FORBENIUS_MAP_ROWS {
+        let one = builder.constant_extension(F::Extension::ONE);
+
+        let c = builder.sub_extension(local_values[FINAL_EXP_FORBENIUS_MAP_SELECTOR], one);
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_CYCLOTOMIC_EXP_SELECTOR]);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_MUL_SELECTOR]);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_CYCLOTOMIC_SQ_SELECTOR]);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_CONJUGATE_SELECTOR]);
+        yield_constr.constraint(builder, c);
+    }
+    for i in 0..24*3*2 {
+        let c = builder.sub_extension(local_values[input_col + i], local_values[FINAL_EXP_OP_OFFSET + FP12_FORBENIUS_MAP_INPUT_OFFSET + i]);
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], c);
+        yield_constr.constraint(builder, c);
+    }
+    let pow = builder.constant_extension(F::Extension::from_canonical_usize(pow));
+    let c = builder.sub_extension(local_values[FINAL_EXP_OP_OFFSET + FP12_FORBENIUS_MAP_POW_OFFSET], pow);
+    let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], c);
+    yield_constr.constraint(builder, c);
+
+    for i in 0..12 {
+        for j in 0..12 {
+            let offset = if j == 0 {
+                FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_INPUT_OFFSET
+            } else if j == 1 {
+                FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_X_CALC_OFFSET + FP2_FORBENIUS_MAP_T0_CALC_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS + REDUCED_OFFSET
+            } else if j == 2 {
+                FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_Y_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
+            } else if j == 3 {
+                FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_Y_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
+            } else if j == 4 {
+                FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_Z_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
+            } else if j == 5 {
+                FP12_FORBENIUS_MAP_R0_CALC_OFFSET + FP6_FORBENIUS_MAP_Z_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
+            } else if j == 6 {
+                FP12_FORBENIUS_MAP_C0_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
+            } else if j == 7 {
+                FP12_FORBENIUS_MAP_C0_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
+            } else if j == 8 {
+                FP12_FORBENIUS_MAP_C1_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
+            } else if j == 9 {
+                FP12_FORBENIUS_MAP_C1_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
+            } else if j == 10 {
+                FP12_FORBENIUS_MAP_C2_CALC_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET
+            } else {
+                FP12_FORBENIUS_MAP_C2_CALC_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET
+            };
+            let c = builder.sub_extension(local_values[FINAL_EXP_OP_OFFSET + offset + i], local_values[output_col + j*12 + i]);
+            let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], c);
+            yield_constr.constraint(builder, c);
+        }
+    }
+}
+
 fn add_constraints_mul<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -435,6 +510,63 @@ fn add_constraints_mul<F: RichField + Extendable<D>,
     }
 }
 
+pub fn add_constraints_mul_ext_circuit<F: RichField + Extendable<D>,
+    const D: usize,
+>(
+    builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
+    yield_constr: &mut starky::constraint_consumer::RecursiveConstraintConsumer<F, D>,
+    local_values: &[ExtensionTarget<D>],
+    next_values: &[ExtensionTarget<D>],
+    row: usize,
+    x_col: usize,
+    y_col: usize,
+    res_col: usize,
+) {
+    for i in row..row + FP12_MUL_ROWS {
+        let one = builder.constant_extension(F::Extension::ONE);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_FORBENIUS_MAP_SELECTOR]);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_CYCLOTOMIC_EXP_SELECTOR]);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[FINAL_EXP_MUL_SELECTOR], one);
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_CYCLOTOMIC_SQ_SELECTOR]);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_CONJUGATE_SELECTOR]);
+        yield_constr.constraint(builder, c);
+    }
+    for i in 0..24*3*2 {
+        let c = builder.sub_extension(local_values[x_col + i], local_values[FINAL_EXP_OP_OFFSET + FP12_MUL_X_INPUT_OFFSET + i]);
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[y_col + i], local_values[FINAL_EXP_OP_OFFSET + FP12_MUL_Y_INPUT_OFFSET + i]);
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], c);
+        yield_constr.constraint(builder, c);
+    }
+    for i in 0..12 {
+        for j in 0..6 {
+            for k in 0..2 {
+                let x_y = if k == 0 {
+                    FP12_MUL_X_CALC_OFFSET + FP6_ADDITION_TOTAL
+                } else {
+                    FP12_MUL_Y_CALC_OFFSET + FP6_ADDITION_TOTAL + FP6_SUBTRACTION_TOTAL
+                };
+                let offset = x_y + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*j + FP_SINGLE_REDUCED_OFFSET + i;
+                let c = builder.sub_extension(local_values[res_col + k*24*3 + j*12 + i], local_values[FINAL_EXP_OP_OFFSET + offset]);
+                let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], c);
+                yield_constr.constraint(builder, c);
+            }
+        }
+    }
+}
+
 fn add_constraints_cyc_exp<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -490,6 +622,49 @@ fn add_constraints_cyc_exp<F: RichField + Extendable<D>,
     }
 }
 
+pub fn add_constraints_cyc_exp_ext_circuit<F: RichField + Extendable<D>,
+    const D: usize,
+>(
+    builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
+    yield_constr: &mut starky::constraint_consumer::RecursiveConstraintConsumer<F, D>,
+    local_values: &[ExtensionTarget<D>],
+    next_values: &[ExtensionTarget<D>],
+    row: usize,
+    input_col: usize,
+    output_col: usize,
+) {
+    for i in row..row + CYCLOTOMIC_EXP_ROWS {
+        let one = builder.constant_extension(F::Extension::ONE);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_FORBENIUS_MAP_SELECTOR]);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[FINAL_EXP_CYCLOTOMIC_EXP_SELECTOR], one);
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_MUL_SELECTOR]);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_CYCLOTOMIC_SQ_SELECTOR]);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_CONJUGATE_SELECTOR]);
+        yield_constr.constraint(builder, c);
+    }
+    for i in 0..24*3*2 {
+        let c = builder.sub_extension(local_values[input_col + i], local_values[FINAL_EXP_OP_OFFSET + INPUT_OFFSET + i]);
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], c);
+        yield_constr.constraint(builder, c);
+    }
+    for i in 0..24*3*2 {
+        let c = builder.sub_extension(local_values[output_col + i], local_values[FINAL_EXP_OP_OFFSET + Z_OFFSET + i]);
+        let c = builder.mul_extension(local_values[FINAL_EXP_OP_OFFSET + RES_ROW_SELECTOR_OFFSET], c);
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row + CYCLOTOMIC_EXP_ROWS - 1], c);
+        yield_constr.constraint(builder, c);
+    }
+}
+
 pub fn add_constraints_conjugate<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -539,6 +714,47 @@ pub fn add_constraints_conjugate<F: RichField + Extendable<D>,
             (local_values[output_col + i] -
             local_values[FINAL_EXP_OP_OFFSET + FP12_CONJUGATE_OUTPUT_OFFSET + i])
         );
+    }
+}
+
+pub fn add_constraints_conjugate_ext_circuit<F: RichField + Extendable<D>,
+    const D: usize,
+>(
+    builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
+    yield_constr: &mut starky::constraint_consumer::RecursiveConstraintConsumer<F, D>,
+    local_values: &[ExtensionTarget<D>],
+    next_values: &[ExtensionTarget<D>],
+    row: usize,
+    input_col: usize,
+    output_col: usize,
+) {
+    let one = builder.constant_extension(F::Extension::ONE);
+
+    let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], local_values[FINAL_EXP_FORBENIUS_MAP_SELECTOR]);
+    yield_constr.constraint(builder, c);
+
+    let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], local_values[FINAL_EXP_CYCLOTOMIC_EXP_SELECTOR]);
+    yield_constr.constraint(builder, c);
+
+    let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], local_values[FINAL_EXP_MUL_SELECTOR]);
+    yield_constr.constraint(builder, c);
+
+    let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], local_values[FINAL_EXP_CYCLOTOMIC_SQ_SELECTOR]);
+    yield_constr.constraint(builder, c);
+
+    let c = builder.sub_extension(local_values[FINAL_EXP_CONJUGATE_SELECTOR], one);
+    let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], c);
+    yield_constr.constraint(builder, c);
+
+    for i in 0..24*3*2 {
+        let c = builder.sub_extension(local_values[input_col + i], local_values[FINAL_EXP_OP_OFFSET + FP12_CONJUGATE_INPUT_OFFSET + i]);
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], c);
+        yield_constr.constraint(builder, c);
+    }
+    for i in 0..24*3*2 {
+        let c = builder.sub_extension(local_values[output_col + i], local_values[FINAL_EXP_OP_OFFSET + FP12_CONJUGATE_OUTPUT_OFFSET + i]);
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], c);
+        yield_constr.constraint(builder, c);
     }
 }
 
@@ -609,6 +825,66 @@ pub fn add_constraints_cyc_sq<F: RichField + Extendable<D>,
                     (local_values[FINAL_EXP_OP_OFFSET + offset + i] -
                     local_values[output_col + j*24 + k*12 + i])
                 );
+            }
+        }
+    }
+}
+
+pub fn add_constraints_cyc_sq_ext_circuit<F: RichField + Extendable<D>,
+    const D: usize,
+>(
+    builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
+    yield_constr: &mut starky::constraint_consumer::RecursiveConstraintConsumer<F, D>,
+    local_values: &[ExtensionTarget<D>],
+    next_values: &[ExtensionTarget<D>],
+    row: usize,
+    input_col: usize,
+    output_col: usize,
+) {
+    for i in row..row + CYCLOTOMIC_SQ_ROWS {
+        let one = builder.constant_extension(F::Extension::ONE);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_FORBENIUS_MAP_SELECTOR]);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_CYCLOTOMIC_EXP_SELECTOR]);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_MUL_SELECTOR]);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.sub_extension(local_values[FINAL_EXP_CYCLOTOMIC_SQ_SELECTOR], one);
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], c);
+        yield_constr.constraint(builder, c);
+
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], local_values[FINAL_EXP_CONJUGATE_SELECTOR]);
+        yield_constr.constraint(builder, c);
+    }
+    for i in 0..24*3*2 {
+        let c = builder.sub_extension(local_values[input_col + i], local_values[FINAL_EXP_OP_OFFSET + CYCLOTOMIC_SQ_INPUT_OFFSET + i]);
+        let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], c);
+        yield_constr.constraint(builder, c);
+    }
+    for i in 0..12 {
+        for j in 0..6 {
+            let c_offset = if j == 0 {
+                CYCLOTOMIC_SQ_C0_CALC_OFFSET
+            } else if j == 1 {
+                CYCLOTOMIC_SQ_C1_CALC_OFFSET
+            } else if j == 2 {
+                CYCLOTOMIC_SQ_C2_CALC_OFFSET
+            } else if j == 3 {
+                CYCLOTOMIC_SQ_C3_CALC_OFFSET
+            } else if j == 4 {
+                CYCLOTOMIC_SQ_C4_CALC_OFFSET
+            } else {
+                CYCLOTOMIC_SQ_C5_CALC_OFFSET
+            };
+            for k in 0..2 {
+                let offset = c_offset + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*k + FP_SINGLE_REDUCED_OFFSET;
+                let c = builder.sub_extension(local_values[FINAL_EXP_OP_OFFSET + offset + i], local_values[output_col + j*24 + k*12 + i]);
+                let c = builder.mul_extension(local_values[FINAL_EXP_ROW_SELECTORS + row], c);
+                yield_constr.constraint(builder, c);
             }
         }
     }
@@ -857,11 +1133,223 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for FinalExponent
 
     fn eval_ext_circuit(
         &self,
-        _builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
-        _vars: &Self::EvaluationFrameTarget,
-        _yield_constr: &mut starky::constraint_consumer::RecursiveConstraintConsumer<F, D>,
+        builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
+        vars: &Self::EvaluationFrameTarget,
+        yield_constr: &mut starky::constraint_consumer::RecursiveConstraintConsumer<F, D>,
     ) {
-        todo!()
+        let local_values = vars.get_local_values();
+        let next_values = vars.get_next_values();
+        let public_inputs = vars.get_public_inputs();
+
+        // ---
+        for i in 0..24*3*2 {
+            let c = builder.sub_extension(local_values[FINAL_EXP_INPUT_OFFSET + i], public_inputs[PIS_INPUT_OFFSET + i]);
+            yield_constr.constraint(builder, c);
+
+            let c = builder.sub_extension(local_values[FINAL_EXP_T31_OFFSET + i], public_inputs[PIS_OUTPUT_OFFSET + i]);
+            yield_constr.constraint(builder, c);
+        }
+
+        let one = builder.constant_extension(F::Extension::ONE);
+        let zero = builder.constant_extension(F::Extension::ZERO);
+
+        for i in 0..self.num_rows {
+            let val = if i == 0 {
+                one
+            } else {
+                zero
+            };
+            let c = builder.sub_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], val);
+            yield_constr.constraint_first_row(builder, c);
+        }
+        for i in 0..self.num_rows-1 {
+            let c = builder.sub_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], next_values[FINAL_EXP_ROW_SELECTORS + i + 1]);
+            yield_constr.constraint_transition(builder, c);
+        }
+        for i in 0..self.num_rows {
+            let val = if i == self.num_rows-1 {
+                one
+            } else {
+                zero
+            };
+            let c = builder.sub_extension(local_values[FINAL_EXP_ROW_SELECTORS + i], val);
+            yield_constr.constraint_last_row(builder, c);
+        }
+        for i in 0..24*3*2 {
+            let c = builder.sub_extension(local_values[FINAL_EXP_INPUT_OFFSET + i], next_values[FINAL_EXP_INPUT_OFFSET + i]);
+            yield_constr.constraint_transition(builder, c);
+            for j in 0..32 {
+                let t = if j == 0 {
+                    FINAL_EXP_T0_OFFSET
+                } else if j == 1 {
+                    FINAL_EXP_T1_OFFSET
+                } else if j == 2 {
+                    FINAL_EXP_T2_OFFSET
+                } else if j == 3 {
+                    FINAL_EXP_T3_OFFSET
+                } else if j == 4 {
+                    FINAL_EXP_T4_OFFSET
+                } else if j == 5 {
+                    FINAL_EXP_T5_OFFSET
+                } else if j == 6 {
+                    FINAL_EXP_T6_OFFSET
+                } else if j == 7 {
+                    FINAL_EXP_T7_OFFSET
+                } else if j == 8 {
+                    FINAL_EXP_T8_OFFSET
+                } else if j == 9 {
+                    FINAL_EXP_T9_OFFSET
+                } else if j == 10 {
+                    FINAL_EXP_T10_OFFSET
+                } else if j == 11 {
+                    FINAL_EXP_T11_OFFSET
+                } else if j == 12 {
+                    FINAL_EXP_T12_OFFSET
+                } else if j == 13 {
+                    FINAL_EXP_T13_OFFSET
+                } else if j == 14 {
+                    FINAL_EXP_T14_OFFSET
+                } else if j == 15 {
+                    FINAL_EXP_T15_OFFSET
+                } else if j == 16 {
+                    FINAL_EXP_T16_OFFSET
+                } else if j == 17 {
+                    FINAL_EXP_T17_OFFSET
+                } else if j == 18 {
+                    FINAL_EXP_T18_OFFSET
+                } else if j == 19 {
+                    FINAL_EXP_T19_OFFSET
+                } else if j == 20 {
+                    FINAL_EXP_T20_OFFSET
+                } else if j == 21 {
+                    FINAL_EXP_T21_OFFSET
+                } else if j == 22 {
+                    FINAL_EXP_T22_OFFSET
+                } else if j == 23 {
+                    FINAL_EXP_T23_OFFSET
+                } else if j == 24 {
+                    FINAL_EXP_T24_OFFSET
+                } else if j == 25 {
+                    FINAL_EXP_T25_OFFSET
+                } else if j == 26 {
+                    FINAL_EXP_T26_OFFSET
+                } else if j == 27 {
+                    FINAL_EXP_T27_OFFSET
+                } else if j == 28 {
+                    FINAL_EXP_T28_OFFSET
+                } else if j == 29 {
+                    FINAL_EXP_T29_OFFSET
+                } else if j == 30 {
+                    FINAL_EXP_T30_OFFSET
+                } else {
+                    FINAL_EXP_T31_OFFSET
+                };
+                let c = builder.sub_extension(local_values[t+i], next_values[t+i]);
+                yield_constr.constraint_transition(builder, c);
+            }
+        }
+
+        // T0
+        add_constraints_forbenius_ext_circuit(builder, yield_constr, local_values, next_values, T0_ROW, FINAL_EXP_INPUT_OFFSET, FINAL_EXP_T0_OFFSET, 6);
+
+        // T1
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T1_ROW, FINAL_EXP_T1_OFFSET, FINAL_EXP_INPUT_OFFSET, FINAL_EXP_T0_OFFSET);
+
+        // T2
+        add_constraints_forbenius_ext_circuit(builder, yield_constr, local_values, next_values, T2_ROW, FINAL_EXP_T1_OFFSET, FINAL_EXP_T2_OFFSET, 2);
+
+        // T3
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T3_ROW, FINAL_EXP_T2_OFFSET, FINAL_EXP_T1_OFFSET, FINAL_EXP_T3_OFFSET);
+
+        // T4
+        add_constraints_cyc_exp_ext_circuit(builder, yield_constr, local_values, next_values, T4_ROW, FINAL_EXP_T3_OFFSET, FINAL_EXP_T4_OFFSET);
+
+        // T5
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T5_ROW, FINAL_EXP_T4_OFFSET, FINAL_EXP_T5_OFFSET);
+
+        // T6
+        add_constraints_cyc_sq_ext_circuit(builder, yield_constr, local_values, next_values, T6_ROW, FINAL_EXP_T3_OFFSET, FINAL_EXP_T6_OFFSET);
+
+        // T7
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T7_ROW, FINAL_EXP_T6_OFFSET, FINAL_EXP_T7_OFFSET);
+
+        // T8
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T8_ROW, FINAL_EXP_T7_OFFSET, FINAL_EXP_T5_OFFSET, FINAL_EXP_T8_OFFSET);
+
+        // T9
+        add_constraints_cyc_exp_ext_circuit(builder, yield_constr, local_values, next_values, T9_ROW, FINAL_EXP_T8_OFFSET, FINAL_EXP_T9_OFFSET);
+
+        // T10
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T10_ROW, FINAL_EXP_T9_OFFSET, FINAL_EXP_T10_OFFSET);
+
+        // T11
+        add_constraints_cyc_exp_ext_circuit(builder, yield_constr, local_values, next_values, T11_ROW, FINAL_EXP_T10_OFFSET, FINAL_EXP_T11_OFFSET);
+
+        // T12
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T12_ROW, FINAL_EXP_T11_OFFSET, FINAL_EXP_T12_OFFSET);
+
+        // T13
+        add_constraints_cyc_exp_ext_circuit(builder, yield_constr, local_values, next_values, T13_ROW, FINAL_EXP_T12_OFFSET, FINAL_EXP_T13_OFFSET);
+
+        // T14
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T14_ROW, FINAL_EXP_T13_OFFSET, FINAL_EXP_T14_OFFSET);
+
+        // T15
+        add_constraints_cyc_sq_ext_circuit(builder, yield_constr, local_values, next_values, T15_ROW, FINAL_EXP_T5_OFFSET, FINAL_EXP_T15_OFFSET);
+
+        // T16
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T16_ROW, FINAL_EXP_T14_OFFSET, FINAL_EXP_T15_OFFSET, FINAL_EXP_T16_OFFSET);
+
+        // T17
+        add_constraints_cyc_exp_ext_circuit(builder, yield_constr, local_values, next_values, T17_ROW, FINAL_EXP_T16_OFFSET, FINAL_EXP_T17_OFFSET);
+
+        // T18
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T18_ROW, FINAL_EXP_T17_OFFSET, FINAL_EXP_T18_OFFSET);
+
+        // T19
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T19_ROW, FINAL_EXP_T5_OFFSET, FINAL_EXP_T12_OFFSET, FINAL_EXP_T19_OFFSET);
+
+        // T20
+        add_constraints_forbenius_ext_circuit(builder, yield_constr, local_values, next_values, T20_ROW, FINAL_EXP_T19_OFFSET, FINAL_EXP_T20_OFFSET, 2);
+
+        // T21
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T21_ROW, FINAL_EXP_T10_OFFSET, FINAL_EXP_T3_OFFSET, FINAL_EXP_T21_OFFSET);
+
+        // T22
+        add_constraints_forbenius_ext_circuit(builder, yield_constr, local_values, next_values, T22_ROW, FINAL_EXP_T21_OFFSET, FINAL_EXP_T22_OFFSET, 3);
+
+        // T23
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T23_ROW, FINAL_EXP_T3_OFFSET, FINAL_EXP_T23_OFFSET);
+
+        // T24
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T24_ROW, FINAL_EXP_T16_OFFSET, FINAL_EXP_T23_OFFSET, FINAL_EXP_T24_OFFSET);
+
+        // T25
+        add_constraints_forbenius_ext_circuit(builder, yield_constr, local_values, next_values, T25_ROW, FINAL_EXP_T24_OFFSET, FINAL_EXP_T25_OFFSET, 1);
+
+        // T26
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T26_ROW, FINAL_EXP_T8_OFFSET, FINAL_EXP_T26_OFFSET);
+
+        // T27
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T27_ROW, FINAL_EXP_T18_OFFSET, FINAL_EXP_T26_OFFSET, FINAL_EXP_T27_OFFSET);
+
+        // T28
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T28_ROW, FINAL_EXP_T27_OFFSET, FINAL_EXP_T3_OFFSET, FINAL_EXP_T28_OFFSET);
+
+        // T29
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T29_ROW, FINAL_EXP_T20_OFFSET, FINAL_EXP_T22_OFFSET, FINAL_EXP_T29_OFFSET);
+
+        // T30
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T30_ROW, FINAL_EXP_T29_OFFSET, FINAL_EXP_T25_OFFSET, FINAL_EXP_T30_OFFSET);
+
+        // T31
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T31_ROW, FINAL_EXP_T30_OFFSET, FINAL_EXP_T28_OFFSET, FINAL_EXP_T31_OFFSET);
+
+        add_fp12_forbenius_map_constraints_ext_circuit(builder, yield_constr, local_values, next_values, FINAL_EXP_OP_OFFSET, Some(local_values[FINAL_EXP_FORBENIUS_MAP_SELECTOR]));
+        add_fp12_multiplication_constraints_ext_circuit(builder, yield_constr, local_values, next_values, FINAL_EXP_OP_OFFSET, Some(local_values[FINAL_EXP_MUL_SELECTOR]));
+        add_cyclotomic_exp_constraints_ext_circuit(builder, yield_constr, local_values, next_values, FINAL_EXP_OP_OFFSET, Some(local_values[FINAL_EXP_CYCLOTOMIC_EXP_SELECTOR]));
+        add_fp12_conjugate_constraints_ext_circuit(builder, yield_constr, local_values, FINAL_EXP_OP_OFFSET, Some(local_values[FINAL_EXP_CONJUGATE_SELECTOR]));
+        add_cyclotomic_sq_constraints_ext_circuit(builder, yield_constr, local_values, next_values, FINAL_EXP_OP_OFFSET, Some(local_values[FINAL_EXP_CYCLOTOMIC_SQ_SELECTOR]));
     }
 
     fn constraint_degree(&self) -> usize {

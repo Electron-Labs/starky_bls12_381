@@ -162,9 +162,9 @@ fn test_stark_circuit_constraints() {
     const D: usize = 2;
     type C = PoseidonGoldilocksConfig;
     type F = <C as GenericConfig<D>>::F;
-    type S = MillerLoopStark<F, D>;
+    type S = FinalExponentiateStark<F, D>;
 
-    let stark = S::new(1024);
+    let stark = S::new(8192);
     starky::stark_testing::test_stark_circuit_constraints::<F, C, S, D>(stark).unwrap();
 }
 
