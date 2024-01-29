@@ -1,3 +1,4 @@
+//! This module contains functions for filling the stark trace and adding constraints for the corresponding trace for some Fp operations (multiplication, addition, subtraction, etc). One fp element is represented as \[u32; 12\] inside the trace.
 use num_bigint::{BigUint, ToBigUint};
 use plonky2::{field::{extension::{Extendable, FieldExtension}, packed::PackedField, types::Field}, hash::hash_types::RichField, iop::ext_target::ExtensionTarget, plonk::circuit_builder::CircuitBuilder};
 use starky::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
@@ -5,6 +6,22 @@ use starky::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsume
 use crate::{native::{add_u32_slices, add_u32_slices_12, get_bits_as_array, get_div_rem_modulus_from_biguint_12, get_selector_bits_from_u32, get_u32_vec_from_literal, get_u32_vec_from_literal_24, modulus, mul_u32_slice_u32, multiply_by_slice, sub_u32_slices, sub_u32_slices_12, Fp}, utils::*};
 
 // Fp Multiplication layout offsets
+/*
+    These trace offsets are for long multiplication. The inputs are each of 12 limbs. The trace needs 12 rows.
+    to compute the result of the multiplication. The final result is stored in the slice [SUM_OFFSET..SUM_OFFSET+24].
+    X_INPUT_OFFSET -> offset at which the first input is set.
+    Y_INPUT_OFFSET -> offset at which the second input is set.
+    XY_OFFSET -> offset of x * y[i] where 0 <= i < 12.
+    XY_CARRIES_OFFSET -> offset of carries which resulted from the operation x * y[i].
+    SHIFTED_XY_OFFSET -> offset at which the shifted values of x * y\[i\] are set. In long multiplication, the multiplication of the i-th digit
+        is set after shifting the result by i places. This is exactly that shift. The maximum shift can be 11, hence the maximum result can be of
+        length 24. Therefore, 24 placesa are reserved for this field.
+    SELECTOR_OFFSET -> offset specifying which index of y are we using for multiplication in the current row. Total 12 selectors, one for each limb.
+    SUM_OFFSET -> offset at which the sum of the individual multiplications done so far are stored.
+    SUM_CARRIES_OFFSET -> offset of carries which resulted from the additions.
+    MULTIPLICATION_SELECTOR_OFFSET -> Selector to ensure that the input is same across all rows. Set 1 in all rows except last one.
+    MULTIPLICATION_FIRST_ROW_OFFSET -> Selector to indicate the first row of multiplication operation
+*/
 pub const X_INPUT_OFFSET: usize = 0;
 pub const Y_INPUT_OFFSET: usize = X_INPUT_OFFSET + 12;
 pub const XY_OFFSET: usize = Y_INPUT_OFFSET + 12;
@@ -19,6 +36,14 @@ pub const MULTIPLICATION_FIRST_ROW_OFFSET: usize = MULTIPLICATION_SELECTOR_OFFSE
 pub const FP_MULTIPLICATION_TOTAL_COLUMNS: usize = MULTIPLICATION_FIRST_ROW_OFFSET + 1;
 
 // Non reduced addition layout offsets
+/*
+    These trace offsets are for long addition. The inputs are 24 limbs each. The trace needs 1 row to compute the result.
+    ADDITION_CHECK_OFFSET -> Selector to indicate this operation is on.
+    ADDITION_X_OFFSET -> offset at which first input set.
+    ADDITION_Y_OFFSET -> offset at which first second set.
+    ADDITION_SUM_OFFSET -> offset at which the result of the addition is set.
+    ADDITION_CARRY_OFFSET -> offset of carries which resulted from the addition operation.
+*/
 pub const ADDITION_CHECK_OFFSET: usize = 0;
 pub const ADDITION_X_OFFSET: usize = ADDITION_CHECK_OFFSET + 1;
 pub const ADDITION_Y_OFFSET: usize = ADDITION_X_OFFSET + 24;
@@ -27,6 +52,14 @@ pub const ADDITION_CARRY_OFFSET: usize = ADDITION_SUM_OFFSET + 24;
 pub const ADDITION_TOTAL: usize = ADDITION_CARRY_OFFSET + 24;
 
 // Non reduced subtraction layout offsets
+/*
+    These trace offsets are for long subtraction. The inputs are 24 limbs each. The trace needs 1 row to compute the result. Assume x > y.
+    SUBTRACTION_CHECK_OFFSET -> Selector to indicate this operation is on.
+    SUBTRACTION_X_OFFSET -> offset at which first input set.
+    SUBTRACTION_Y_OFFSET -> offset at which first second set.
+    SUBTRACTION_SUM_OFFSET -> offset at which the result of the subtraction is set.
+    SUBTRACTION_CARRY_OFFSET -> offset of borrows which resulted from the subtraction operation.
+*/
 pub const SUBTRACTION_CHECK_OFFSET: usize = 0;
 pub const SUBTRACTION_X_OFFSET: usize = SUBTRACTION_CHECK_OFFSET + 1;
 pub const SUBTRACTION_Y_OFFSET: usize = SUBTRACTION_X_OFFSET + 24;
@@ -35,6 +68,14 @@ pub const SUBTRACTION_BORROW_OFFSET: usize = SUBTRACTION_DIFF_OFFSET + 24;
 pub const SUBTRACTION_TOTAL: usize = SUBTRACTION_BORROW_OFFSET + 24;
 
 // Reduce and rangecheck layout offsets
+/*
+    These trace offsets are for reducing a [u32; 24] input with the bls12-381 field prime. Ensures, x = d*p + r. Where x is the input,
+    d is the quotient, p is the prime and r is the reduced output. The trace needs 12 rows.
+    REDUCE_MULTIPLICATION_OFFSET -> offset at which the multiplication operation is done.
+    REDUCE_X_OFFSET -> offset at which input is set.
+    REDUCTION_ADDITION_OFFSET -> offset at which addition operation is done.
+    REDUCED_OFFSET -> offset at which the reduced value is set
+*/
 pub const REDUCE_MULTIPLICATION_OFFSET: usize = 0;
 pub const REDUCE_X_OFFSET: usize = REDUCE_MULTIPLICATION_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS;
 pub const REDUCTION_ADDITION_OFFSET: usize = REDUCE_X_OFFSET + 24;
@@ -43,6 +84,15 @@ pub const REDUCTION_TOTAL: usize = REDUCED_OFFSET + 12;
 
 // Rangecheck offsets
 // whenever range check is used, start_col - 12 will contain the element being rangechecked
+/*
+    These trace offsets are for checking if a given input is less than the bls12-381 field prime. Needs 1 row for the computation. The check works as follows ->
+        1. Compute y = (2**382 - p + x)
+        2. If (y>>382)&1 == 0, then x in less than p.
+    RANGE_CHECK_SELECTOR_OFFSET -> selector to indicate this operation is on.
+    RANGE_CHECK_SUM_OFFSET -> offset which stores the sum.
+    RANGE_CHECK_SUM_CARRY_OFFSET -> offset which stores the carries resulted from the addition operation.
+    RANGE_CHECK_BIT_DECOMP_OFFSET -> offset at which the bit decomposition of the most significant limb of the sum is stored.
+*/
 pub const RANGE_CHECK_SELECTOR_OFFSET: usize = 0;
 pub const RANGE_CHECK_SUM_OFFSET: usize = RANGE_CHECK_SELECTOR_OFFSET + 1;
 pub const RANGE_CHECK_SUM_CARRY_OFFSET: usize = RANGE_CHECK_SUM_OFFSET + 12;
@@ -50,6 +100,14 @@ pub const RANGE_CHECK_BIT_DECOMP_OFFSET: usize = RANGE_CHECK_SUM_CARRY_OFFSET + 
 pub const RANGE_CHECK_TOTAL: usize = RANGE_CHECK_BIT_DECOMP_OFFSET + 32;
 
 // Fp addition layout offsets
+/*
+    These trace offsets are for long addition. The inputs are 12 limbs each. The trace needs 1 row to compute the result.
+    FP_ADDITION_CHECK_OFFSET -> Selector to indicate this operation is on.
+    FP_ADDITION_X_OFFSET -> offset at which first input set.
+    FP_ADDITION_Y_OFFSET -> offset at which first second set.
+    FP_ADDITION_SUM_OFFSET -> offset at which the result of the addition is set.
+    FP_ADDITION_CARRY_OFFSET -> offset of carries which resulted from the addition operation.
+*/
 pub const FP_ADDITION_CHECK_OFFSET: usize = 0;
 pub const FP_ADDITION_X_OFFSET: usize = FP_ADDITION_CHECK_OFFSET + 1;
 pub const FP_ADDITION_Y_OFFSET: usize = FP_ADDITION_X_OFFSET + 12;
@@ -58,6 +116,14 @@ pub const FP_ADDITION_CARRY_OFFSET: usize = FP_ADDITION_SUM_OFFSET + 12;
 pub const FP_ADDITION_TOTAL: usize = FP_ADDITION_CARRY_OFFSET + 12;
 
 // Fp subtraction layout offsets
+/*
+    These trace offsets are for long subtraction. The inputs are 12 limbs each. The trace needs 1 row to compute the result. Assume x > y.
+    FP_SUBTRACTION_CHECK_OFFSET -> Selector to indicate this operation is on.
+    FP_SUBTRACTION_X_OFFSET -> offset at which first input set.
+    FP_SUBTRACTION_Y_OFFSET -> offset at which first second set.
+    FP_SUBTRACTION_SUM_OFFSET -> offset at which the result of the subtraction is set.
+    FP_SUBTRACTION_CARRY_OFFSET -> offset of borrows which resulted from the subtraction operation.
+*/
 pub const FP_SUBTRACTION_CHECK_OFFSET: usize = 0;
 pub const FP_SUBTRACTION_X_OFFSET: usize = FP_SUBTRACTION_CHECK_OFFSET + 1;
 pub const FP_SUBTRACTION_Y_OFFSET: usize = FP_SUBTRACTION_X_OFFSET + 12;
@@ -66,6 +132,14 @@ pub const FP_SUBTRACTION_BORROW_OFFSET: usize = FP_SUBTRACTION_DIFF_OFFSET + 12;
 pub const FP_SUBTRACTION_TOTAL: usize = FP_SUBTRACTION_BORROW_OFFSET + 12;
 
 // Fp multiply single
+/*
+    These trace offsets are for long multiplication. The first input is 12 limbs, the second input is 1 limb. The trace needs 1 row to compute the result.
+    FP_MULTIPLY_SINGLE_CHECK_OFFSET -> Selector to indicate this operation is on.
+    FP_MULTIPLY_SINGLE_X_OFFSET -> offset at which first input set.
+    FP_MULTIPLY_SINGLE_Y_OFFSET -> offset at which first second set.
+    FP_MULTIPLY_SINGLE_SUM_OFFSET -> offset at which the result of the addition is set.
+    FP_MULTIPLY_SINGLE_CARRY_OFFSET -> offset of carries which resulted from the addition operation.
+*/
 pub const FP_MULTIPLY_SINGLE_CHECK_OFFSET: usize = 0;
 pub const FP_MULTIPLY_SINGLE_X_OFFSET: usize = FP_MULTIPLY_SINGLE_CHECK_OFFSET + 1;
 pub const FP_MULTIPLY_SINGLE_Y_OFFSET: usize = FP_MULTIPLY_SINGLE_X_OFFSET + 12;
@@ -74,6 +148,14 @@ pub const FP_MULTIPLY_SINGLE_CARRY_OFFSET: usize = FP_MULTIPLY_SINGLE_SUM_OFFSET
 pub const FP_MULTIPLY_SINGLE_TOTAL: usize = FP_MULTIPLY_SINGLE_CARRY_OFFSET + 12;
 
 // Fp reduce rangecheck single
+/*
+    These trace offsets are for for reducing a [u32; 12] input with the bls12-381 field prime. Ensures, x = d*p + r. Where x is the input,
+    d is the quotient, p is the prime and r is the reduced output.
+    FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET -> offset at which the multiplication operation is done.
+    FP_SINGLE_REDUCE_X_OFFSET -> offset at which input is set.
+    FP_SINGLE_REDUCTION_ADDITION_OFFSET -> offset at which addition operation is done.
+    FP_SINGLE_REDUCED_OFFSET -> offset at which the reduced value is set
+*/
 pub const FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET: usize = 0;
 pub const FP_SINGLE_REDUCE_X_OFFSET: usize = FP_SINGLE_REDUCE_MULTIPLICATION_OFFSET + FP_MULTIPLY_SINGLE_TOTAL;
 pub const FP_SINGLE_REDUCTION_ADDITION_OFFSET: usize = FP_SINGLE_REDUCE_X_OFFSET + 12;
@@ -99,6 +181,7 @@ macro_rules! bit_decomp_32_circuit {
     }};
 }
 
+/// Fills the stark trace of addition following long addition. Inputs are 24 limbs each. Needs 1 row.
 pub fn fill_addition_trace<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -117,6 +200,7 @@ pub fn fill_addition_trace<F: RichField + Extendable<D>,
     assign_u32_in_series(trace, row, start_col + ADDITION_CARRY_OFFSET, &x_y_sum_carry);
 }
 
+/// Fills the stark trace of addition following long addition. Inputs are 12 limbs each. Needs 1 row.
 pub fn fill_trace_addition_fp<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -135,6 +219,7 @@ pub fn fill_trace_addition_fp<F: RichField + Extendable<D>,
     assign_u32_in_series(trace, row, start_col + FP_ADDITION_CARRY_OFFSET, &x_y_sum_carry);
 }
 
+/// Fills the stark trace of negation. Input is 12 limbs. Needs 1 row. In essence, it fills an addition trace with inputs as `x` and `-x`.
 pub fn fill_trace_negate_fp<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -148,6 +233,7 @@ pub fn fill_trace_negate_fp<F: RichField + Extendable<D>,
     fill_trace_addition_fp(trace, x, &minus_x, row, start_col);
 }
 
+/// Fills the stark trace of subtraction following long subtraction. Inputs are 24 limbs each. Needs 1 row. Assume x > y.
 pub fn fill_subtraction_trace<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -166,6 +252,7 @@ pub fn fill_subtraction_trace<F: RichField + Extendable<D>,
     assign_u32_in_series(trace, row, start_col + SUBTRACTION_BORROW_OFFSET, &x_y_diff_borrow);
 }
 
+/// Fills the stark trace of subtraction following long subtraction. Inputs are 12 limbs each. Needs 1 row. Assume x > y.
 pub fn fill_trace_subtraction_fp<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -184,6 +271,7 @@ pub fn fill_trace_subtraction_fp<F: RichField + Extendable<D>,
     assign_u32_in_series(trace, row, start_col + FP_SUBTRACTION_BORROW_OFFSET, &x_y_borrow);
 }
 
+/// Fills the stark trace of multiplication following long multiplication. Inputs are 12 limbs and 1 limb respectively. Needs 1 row.
 pub fn fill_trace_multiply_single_fp<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -202,6 +290,7 @@ pub fn fill_trace_multiply_single_fp<F: RichField + Extendable<D>,
     assign_u32_in_series(trace, row, start_col + FP_MULTIPLY_SINGLE_CARRY_OFFSET, &x_y_carry);
 }
 
+/// Fills the stark trace of reducing wrt modulo p. Input is 12 limbs. Needs 1 row. Returns the answer as \[u32; 12\].
 pub fn fill_trace_reduce_single<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -222,6 +311,7 @@ pub fn fill_trace_reduce_single<F: RichField + Extendable<D>,
     rem
 }
 
+/// Fills the stark trace for range check operation wrt the field prime p. Input is 12 limbs. Needs 1 row.
 pub fn fill_range_check_trace<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -239,7 +329,7 @@ pub fn fill_range_check_trace<F: RichField + Extendable<D>,
     );
 }
 
-// Fills from start_row..end_row+1
+/// Fills stark trace for multiplication following long multiplication. Inputs are 12 limbs each. Needs 12 rows.
 pub fn fill_multiplication_trace_no_mod_reduction<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -251,10 +341,6 @@ pub fn fill_multiplication_trace_no_mod_reduction<F: RichField + Extendable<D>,
     end_row: usize,
     start_col: usize,
 ) {
-    // [TODO]:
-    // 1. Assert end_row - start_row + 1 == total rows required
-    // 2. Assert end_col - start_col + 1 == total cols required
-    // assert_eq!(end_row - start_row + 1, num_rows);
     let mut selector = 1;
     // Inputs are filled from start_row..end_row + 1
     trace[start_row][start_col + MULTIPLICATION_FIRST_ROW_OFFSET] = F::ONE;
@@ -296,6 +382,7 @@ pub fn fill_multiplication_trace_no_mod_reduction<F: RichField + Extendable<D>,
     }
 }
 
+/// Fills the stark trace of reducing wrt modulo p. Input is 24 limbs. Needs 12 rows. Set addition selector to 1 only in the 11th row, because that's where multiplication result is set. Returns the answer as \[u32; 12\].
 pub fn fill_reduction_trace<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -340,6 +427,19 @@ pub fn fill_reduction_trace<F: RichField + Extendable<D>,
 
 }
 
+/// Constraints the operation for multiplication of two \[u32; 12\].
+///
+/// Constraint the input values across this row and next row wherever selector is on.
+///
+/// Constraints the following -> `selector[i] * (product[j] + carries[j]*(2**32) - x[j] * y[i] - carries[j-1]) == 0`. for 0 <= j < 12, for 0 <= i < 12.
+/// which encapsulates the condition "either selector is off or the multiplication is correct".
+///
+/// Constraints the shifted value with product of the current limb as `selector[i] * (shifted[i + j] - product[j]) == 0`. for 0 <= j < 12, for 0 <= i < 12.
+/// which encapsulates the condition "either selector is off or product is shifted by i places".
+///
+/// Constraint the first row of multiplication that `sum == shifted` for all limbs
+///
+/// Constraints `next_row_sum[i] + next_row_carries[i]*(2**32) == curr_row_sum[i] + shifted[i] + next_row_carries[i-1]` for 0 <= i < 24.
 pub fn add_multiplication_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -591,6 +691,8 @@ pub fn add_multiplication_constraints_ext_circuit<
 
 }
 
+/// Constraints the addition for addition of two \[u32; 24\].
+/// Constraints the following for every limb -> `sum[i] + carries[i]*(2**32) == x[i] + y[i] + carries[i-1]`.
 pub fn add_addition_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -677,6 +779,8 @@ pub fn add_addition_constraints_ext_circuit<
     }
 }
 
+/// Constraints the operation for addition of two \[u32; 12\].
+/// Constraints the following for every limb -> `sum[i] + carries[i]*(2**32) == x[i] + y[i] + carries[i-1]`.
 pub fn add_addition_fp_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -765,6 +869,8 @@ pub fn add_addition_fp_constraints_ext_circuit<
     
 }
 
+/// Constraints the operation for subtraction of two \[u32; 12\].
+/// Constraints the following for every limb -> `diff[i] - borrows[i]*(2**32) == x[i] - y[i] - borrows[i-1]`.
 pub fn add_subtraction_fp_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -856,6 +962,8 @@ pub fn add_subtraction_fp_constraints_ext_circuit<
     }
 }
 
+/// Constraints the negation operation for \[u32; 12\].
+/// Constraints an addition operation, following by constraining `result == p`, where p is the field prime.
 pub fn add_negate_fp_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -911,6 +1019,8 @@ pub fn add_negate_fp_constraints_ext_circuit<
     }
 
 }
+/// Constraints the operation for multiplication of \[u32; 12\] with a u32.
+/// Constraints the following for every limb -> `product[i] + carries[i]*(2**32) == x[i] * y + carries[i-1]`.
 pub fn add_fp_single_multiply_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -999,6 +1109,8 @@ pub fn add_fp_single_multiply_constraints_ext_circuit<
 
 }
 
+/// Constraints the reduction operation for \[u32; 12\].
+/// Constraints a single multiplication operation with `p` as `x` input. Then constraints an addition operation with the result of the previous multiplication and the reduced answer as inputs. Then constraints the result of the addition with the input of reduction operation.
 pub fn add_fp_reduce_single_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -1122,6 +1234,8 @@ pub fn add_fp_reduce_single_constraints_ext_circuit<
 
 }
 
+/// Constraints the operation for subtraction of two \[u32; 24\].
+/// Constraints the following for every limb -> `diff[i] - borrows[i]*(2**32) == x[i] - y[i] - borrows[i-1]`.
 pub fn add_subtraction_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -1207,6 +1321,8 @@ pub fn add_subtraction_constraints_ext_circuit<
         }
     }
 }
+/// Constraints the range check operation of a \[u23; 12\].
+/// Constraints the addition of the input and (2**382)-p. Then constraints the bit decomposition of the most significant limb of the result of the previous addition. Then constraints the 30th bit of the decomposition (which is overall 382nd bit of the result) to zero.
 pub fn add_range_check_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -1325,6 +1441,9 @@ pub fn add_range_check_constraints_ext_circuit<
 }
 
 
+/// Constraints the reduction operation for \[u32; 24\].
+/// Constraints that input and result is same across this row and next row wherever the selector is on.
+/// Constraints a multiplication operation with `p` as `x` input. Then constraints an addition operation with the result of the previous multiplication and the reduced answer as inputs. Then constraints the result of the addition with the input of reduction operation.
 pub fn add_reduce_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
