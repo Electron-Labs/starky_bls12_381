@@ -32,6 +32,24 @@ use crate::fp12::*;
 use crate::utils::*;
 
 // Miller loop offsets
+/*
+    These trace offsets are for the miller_loop function (super::native::miller_loop). It takes 12*68 rows. The MSB of bls12-381 parameter is not used.
+    FIRST_BIT_SELECTOR_OFFSET -> selector which is set 1 when the trace is for the first bit inside the loop.
+    LAST_BIT_SELECTOR_OFFSET -> selector which is set 1 when the trace is for the last bit inside the loop.
+    FIRST_ROW_SELECTOR_OFFSET -> selector which is 1 for the starting row for each operation. Hence, every 12th row, it is set 1.
+    BIT1_SELECTOR_OFFSET -> selector which is 1 for each 1 bit of bls12-381 parameter. It is set 1 for 12 rows continous rows.
+    PX_OFFSET -> offset where Px is set (defined in native function definition).
+    PY_OFFSET -> offset where Py is set (defined in native function definition).
+    ELL_COEFFS_INDEX_OFFSET -> offset which stores which index of the `ell_coeffs` array the trace is currently on. Total 68 selectors, one for each possible index of ell_coeffs.
+    ELL_COEFFS_OFFSET -> offset which stores the `ell_coeffs` used in the current row computation.
+    F12_OFFSET -> offset which stores the result of the current miller loop computation.
+    O1_CALC_OFFSET -> offset which calculates `ell_coeffs[1]`*Px.
+    O4_CALC_OFFSET -> offset which calculates `ell_coeffs[2]`*Py.
+    F12_MUL_BY_014_OFFSET -> offset for multiplyBy014 function computation.
+    F12_SQ_CALC_OFFSET -> offset for f12*f12 computation.
+    MILLER_LOOP_RES_OFFSET -> offset which stores the result of miller_loop function.
+    RES_CONJUGATE_OFFSET -> offset which stores the computation of conjugate of miller loop result. (used to match f12 value after the last loop of computation).
+*/
 pub const FIRST_BIT_SELECTOR_OFFSET: usize = 0; 
 pub const LAST_BIT_SELECTOR_OFFSET: usize = FIRST_BIT_SELECTOR_OFFSET + 1;
 pub const FIRST_ROW_SELECTOR_OFFSET: usize = LAST_BIT_SELECTOR_OFFSET + 1;
@@ -53,6 +71,10 @@ pub const MILLER_LOOP_TOTAL: usize = RES_CONJUGATE_OFFSET + FP6_ADDITION_TOTAL;
 pub const TOTAL_COLUMNS: usize = MILLER_LOOP_TOTAL;
 pub const COLUMNS: usize = TOTAL_COLUMNS;
 
+/*
+    The public inputs for this stark are the x, y inputs to the miller_loop function followed by the array of `ell_coeffs` resulted from calc_pairing_precomp, then the final result of miller_loop.
+*/
+
 pub const PIS_PX_OFFSET: usize = 0;
 pub const PIS_PY_OFFSET: usize = PIS_PX_OFFSET + 12;
 pub const PIS_ELL_COEFFS_OFFSET: usize = PIS_PY_OFFSET + 12;
@@ -66,6 +88,7 @@ pub struct MillerLoopStark<F: RichField + Extendable<D>, const D: usize> {
     _f: std::marker::PhantomData<F>,
 }
 
+/// Fills the trace of [miller_loop](super::native::miller_loop) function. Inputs are two 12 limbs and `ell_coeffs` array computed from `calc_pairing_precomp`. The values of Px and Py are filled across all rows in the trace. `FIRST_BIT_SELECTOR_OFFSET` is set 1 for the first loop computation. Sets the `ELL_COEFFS_INDEX` for the corresponding index. Sets the corresponding `ell_coeff` for the current row of computation. Fills the F12 trace, starting with 1 and then updates after each loop of computation. Fills trace for O1 and O4 calculations. Sets `FIRST_ROW_SELECTOR` to 1 for starting row of the operation. Fills the trace for multiplyBy014 caluclations and Fp12 multiplication calculations. Then fills the trace with miller_loop result, followed by conjugate computation for miller loop result.
 pub fn fill_trace_miller_loop<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -160,6 +183,17 @@ impl<F: RichField + Extendable<D>, const D: usize> MillerLoopStark<F, D> {
     }
 }
 
+/// The constraints of this stark are as follows:
+/// * Constraint Px and Py to be same across all rows.
+/// * Constraints F12 to 1 when `FIRST_BIT_SELECTOR` is set 1.
+/// * Constraints next row F12 to result of current row multiplyBy014 when next row `FIRST_ROW_SELECTOR` is set 1 and next row `BIT1_SELECTOR` is set 1.
+/// * Constraints next row F12 to result of current row fp12 multiplication when next row `FIRST_ROW_SELECTOR` is set 1 and next row `BIT1_SELECTOR` is set 0.
+/// * Constraints O1 computation with Px and current `ell_coeffs[1]`.
+/// * Constraints O4 computation with Py and current `ell_coeffs[2]`.
+/// * Constraints multiplyBy014 computation with F12, `ell_coeffs[0]`, O1 and O4.
+/// * Constrants fp12 multiplication for F12*F12.
+/// * Constraints result conjugate computation with miller loop res.
+/// * Constraints the result of conjugate computation with F12 when `LAST_BIT_SELECTOR` is set 1.
 pub fn add_miller_loop_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -596,6 +630,15 @@ pub fn add_miller_loop_constraints_ext_circuit<
         }
     }
 }
+
+/*
+    Constraints for miller loop stark:
+    * Constraint Px with public input x
+    * Constraint Py with public input y
+    * Constraint current row `ell_coeff` along with `ELL_COEFFS_INDEX` with public inputs `ell_coeffs`.
+    * Constrain `MILLER_LOOP_RES` with public inputs result
+    * Constraints for miller loop computation.
+*/
 
 // Implement constraint generator
 impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for MillerLoopStark<F, D> {
