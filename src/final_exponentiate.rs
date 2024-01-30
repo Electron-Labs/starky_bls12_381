@@ -33,6 +33,19 @@ use crate::fp6::*;
 use crate::fp12::*;
 use crate::utils::*;
 
+/*
+    These offsets are for final_exponentiation function (super::native::Fp12::final_exponentiate). This stark needs 8192 rows. The Ti's are defined in the function definition.
+    FINAL_EXP_ROW_SELECTORS -> 8192 selectors set 1 for the corresponding row number.
+    FINAL_EXP_FORBENIUS_MAP_SELECTOR -> selector set 1 when the operation is Fp12 forbenius map.
+    FINAL_EXP_CYCLOTOMIC_EXP_SELECTOR -> selector set 1 when the operation is cyclotomicExponent.
+    FINAL_EXP_MUL_SELECTOR -> selector set 1 when the operation is fp12 multiplication.
+    FINAL_EXP_CYCLOTOMIC_SQ_SELECTOR -> selector set 1 when the operation is Fp12 forbenius map.
+    FINAL_EXP_CONJUGATE_SELECTOR -> selector set 1 when the operation is fp12 conjugate.
+    FINAL_EXP_INPUT_OFFSET -> offset where input of the function is set.
+    FINAL_EXP_T${i}_OFFSET -> offset where the Ti's are set.
+    FINAL_EXP_OP_OFFSET -> offset where the stark trace of an operation is filled.
+*/
+
 pub const FINAL_EXP_ROW_SELECTORS: usize = 0;
 pub const FINAL_EXP_FORBENIUS_MAP_SELECTOR: usize = FINAL_EXP_ROW_SELECTORS + 8192;
 pub const FINAL_EXP_CYCLOTOMIC_EXP_SELECTOR: usize = FINAL_EXP_FORBENIUS_MAP_SELECTOR + 1;
@@ -75,12 +88,14 @@ pub const FINAL_EXP_T31_OFFSET: usize = FINAL_EXP_T30_OFFSET + 12*12;
 pub const FINAL_EXP_OP_OFFSET: usize = FINAL_EXP_T31_OFFSET + 12*12;
 pub const FINAL_EXP_TOTAL_COLUMNS: usize = FINAL_EXP_OP_OFFSET + CYCLOTOMIC_EXP_TOTAL_COLUMNS;
 
+// Number of rows required for each operation
 pub const FP12_MUL_ROWS: usize = 12;
 pub const FP12_FORBENIUS_MAP_ROWS: usize = 12;
 pub const CYCLOTOMIC_SQ_ROWS: usize = 12;
 pub const CONJUGATE_ROWS: usize = 1;
 pub const CYCLOTOMIC_EXP_ROWS: usize = 70*12 + 1;
 
+// Row number where the operation for computing Ti starts.
 pub const T0_ROW: usize = 0;
 pub const T1_ROW: usize = T0_ROW + FP12_FORBENIUS_MAP_ROWS;
 pub const T2_ROW: usize = T1_ROW + FP12_MUL_ROWS;
@@ -118,6 +133,7 @@ pub const TOTAL_ROW: usize = T31_ROW + FP12_MUL_ROWS;
 pub const TOTAL_COLUMNS: usize = FINAL_EXP_TOTAL_COLUMNS;
 pub const COLUMNS: usize = TOTAL_COLUMNS;
 
+// Public inputs to this stark are the input and output of the function final_exponentiate.
 pub const PIS_INPUT_OFFSET: usize = 0;
 pub const PIS_OUTPUT_OFFSET: usize = PIS_INPUT_OFFSET + 24*3*2;
 pub const PUBLIC_INPUTS: usize = PIS_OUTPUT_OFFSET + 24*3*2;
@@ -129,6 +145,7 @@ pub struct FinalExponentiateStark<F: RichField + Extendable<D>, const D: usize> 
     _f: std::marker::PhantomData<F>,
 }
 
+/// Fills trace for forbenius map operation. First sets `FINAL_EXP_FORBENIUS_MAP_SELECTOR` to 1 in the rows of the operation. Sets the result of the operaion in all rows of the trace. Then fills the trace for the forbenius map operation.
 pub fn fill_trace_forbenius<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -144,6 +161,7 @@ pub fn fill_trace_forbenius<F: RichField + Extendable<D>,
     res
 }
 
+/// Fills trace for fp12 multiplication operation. First sets `FINAL_EXP_MUL_SELECTOR` to 1 in the rows of the operation. Sets the result of the operaion in all rows of the trace. Then fills the trace for the fp12 multiplication operation.
 pub fn fill_trace_mul<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -159,6 +177,7 @@ pub fn fill_trace_mul<F: RichField + Extendable<D>,
     res
 }
 
+/// Fills trace for fp12 division (which is basically fp12 multiplication) operation. First sets `FINAL_EXP_MUL_SELECTOR` to 1 in the rows of the operation. Sets the result of the operaion in all rows of the trace. Then fills the trace for the fp12 multiplication operation.
 pub fn fill_trace_div<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -174,6 +193,7 @@ pub fn fill_trace_div<F: RichField + Extendable<D>,
     res
 }
 
+/// Fills trace for cyclotomic exponent operation. First sets `FINAL_EXP_CYCLOTOMIC_EXP_SELECTOR` to 1 in the rows of the operation. Sets the result of the operaion in all rows of the trace. Then fills the trace for the cyclotomic exponent operation.
 pub fn fill_trace_cyc_exp<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -189,6 +209,7 @@ pub fn fill_trace_cyc_exp<F: RichField + Extendable<D>,
     res
 }
 
+/// Fills trace for fp12 conjugate operation. First sets `FINAL_EXP_CONJUGATE_SELECTOR` to 1 in the rows of the operation. Sets the result of the operaion in all rows of the trace. Then fills the trace for the fp12 conjugate operation.
 pub fn fill_trace_conjugate<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -202,6 +223,7 @@ pub fn fill_trace_conjugate<F: RichField + Extendable<D>,
     res
 }
 
+/// Fills trace for cyclotomic square operation. First sets `FINAL_EXP_CYCLOTOMIC_SQ_SELECTOR` to 1 in the rows of the operation. Sets the result of the operaion in all rows of the trace. Then fills the trace for the cyclotomic square operation.
 pub fn fill_trace_cyc_sq<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -226,6 +248,7 @@ impl<F: RichField + Extendable<D>, const D: usize> FinalExponentiateStark<F, D> 
         }
     }
 
+    /// Fills the trace for [final_exponentiate](super::native::Fp12::final_exponentiate) function. First fill the `FINAL_EXP_ROW_SELECTORS` according to the row number. Assigns the input to all rows in `FINAL_EXP_INPUT_OFFSET`, then fills trace for each Ti term as defined in the native function definition.
     pub fn generate_trace(&self, x: Fp12) -> Vec<[F; TOTAL_COLUMNS]> {
         let mut trace = vec![[F::ZERO; TOTAL_COLUMNS]; self.num_rows];
         for row in 0..trace.len() {
@@ -279,6 +302,7 @@ pub fn trace_rows_to_poly_values<F: Field>(
         .collect()
 }
 
+/// Constraints `FINAL_EXP_FORBENIUS_MAP_SELECTOR` to be 1 and other op selectors to be 0 in the `FP12_FORBENIUS_MAP_ROWS` starting from `row`. Constraints the values in input columns to input of forbenius_map operation trace. Constraints the output of forbenius_map trace to the values set in output columns.
 fn add_constraints_forbenius<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -440,6 +464,7 @@ pub fn add_constraints_forbenius_ext_circuit<F: RichField + Extendable<D>,
     }
 }
 
+/// Constraints `FINAL_EXP_MUL_SELECTOR` to be 1, and other op selectors to be 0 in the `FP12_MUL_ROWS` starting from `row`. Constraints the values in input columns to input of fp12_multiplication operation trace. Constraints the output of fp12_multiplication trace to the values set in output columns.
 fn add_constraints_mul<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -567,6 +592,7 @@ pub fn add_constraints_mul_ext_circuit<F: RichField + Extendable<D>,
     }
 }
 
+/// Constraints `FINAL_EXP_CYCLOTOMIC_EXP_SELECTOR` to be 1 and other op selectors to be 0 in the `CYCLOTOMIC_EXP_ROWS` starting from `row`. Constraints the values in input columns to input of cyclotomic_exponent operation trace. Constraints the output of cyclotomic_exponent trace to the values set in output columns.
 fn add_constraints_cyc_exp<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -665,6 +691,7 @@ pub fn add_constraints_cyc_exp_ext_circuit<F: RichField + Extendable<D>,
     }
 }
 
+/// Constraints `FINAL_EXP_CONJUGATE_SELECTOR` to be 1 and other op selectors to be 0 in the `CONJUGATE_ROWS` starting from `row`. Constraints the values in input columns to input of fp12_conjugate operation trace. Constraints the output of fp12_conjugate trace to the values set in output columns.
 pub fn add_constraints_conjugate<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -758,6 +785,7 @@ pub fn add_constraints_conjugate_ext_circuit<F: RichField + Extendable<D>,
     }
 }
 
+/// Constraints `FINAL_EXP_CYCLOTOMIC_SQ_SELECTOR` to be 1 and other op selectors to be 0 in the `CYCLOTOMIC_SQ_ROWS` starting from `row`. Constraints the values in input columns to input of cyclotomic_square operation trace. Constraints the output of cyclotomic_square trace to the values set in output columns.
 pub fn add_constraints_cyc_sq<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -889,6 +917,18 @@ pub fn add_constraints_cyc_sq_ext_circuit<F: RichField + Extendable<D>,
         }
     }
 }
+
+/*
+    Constraints for final_exponentiate trace (super::native::Fp12::final_exponentiate)
+    * Constraints input of trace to public inputs
+    * Constraints T31 of trace (result of final exponentiate) to public inputs
+    * Constraints `FINAL_EXP_ROW_SELECTORS` for row=0, to 1 in the first row.
+    * Constraints the `FINAL_EXP_ROW_SELECTORS` to rotate right by 1 in each next row
+    * Constraints `FINAL_EXP_ROW_SELECTORS` for row=8192, to 1 in the last row.
+    * Constraints the inputs of the trace and the Ti's to be same across all rows. Ti's defined in the native function.
+    * Constraints the operation selectors, inputs and outputs for the operation for each Ti.
+    * Constraints for all the operations with operation selector, i.e. those constraints will only be active if the operation selector is set 1. 
+*/
 
 // Implement constraint generator
 impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for FinalExponentiateStark<F, D> {
