@@ -1,9 +1,13 @@
+//! This module contains functions for filling the stark trace and adding constraints for the corresponding trace for some Fp6 operations (multiplication, addition, subtraction, etc). One Fp6 element is represented as \[u32; 72\] inside the trace. But most of the time, Fp6 elements are broken up into six Fp elements, hence represented as six \[u32; 12\].
 use num_bigint::BigUint;
 use plonky2::{field::{extension::{Extendable, FieldExtension}, packed::PackedField, types::Field}, hash::hash_types::RichField, iop::ext_target::ExtensionTarget, plonk::circuit_builder::CircuitBuilder};
 use starky::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
 use crate::{native::{get_u32_vec_from_literal, modulus, Fp2, Fp6}, utils::*, fp::*, fp2::*};
 
 // FP6 multiplication offsets
+/*
+    These trace offsets are for fp6 multiplication. It needs 12 rows. The Ti's are defined in (super::native::mul_Fp6).
+*/
 pub const FP6_MUL_SELECTOR_OFFSET: usize = 0;
 pub const FP6_MUL_X_INPUT_OFFSET: usize = FP6_MUL_SELECTOR_OFFSET + 1;
 pub const FP6_MUL_Y_INPUT_OFFSET: usize = FP6_MUL_X_INPUT_OFFSET + 24*3;
@@ -33,24 +37,36 @@ pub const FP6_MUL_Z_CALC_OFFSET: usize = FP6_MUL_T19_CALC_OFFSET + FP2_ADDITION_
 pub const FP6_MUL_TOTAL_COLUMNS: usize = FP6_MUL_Z_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*2;
 
 // FP6 non residue multiplication
+/*
+    These trace offsets are for fp6 non residue multiplication (super::native::mul_by_nonresidue). It needs 1 row. 
+*/
 pub const FP6_NON_RESIDUE_MUL_CHECK_OFFSET: usize = 0;
 pub const FP6_NON_RESIDUE_MUL_INPUT_OFFSET: usize = FP6_NON_RESIDUE_MUL_CHECK_OFFSET + 1;
 pub const FP6_NON_RESIDUE_MUL_C2: usize = FP6_NON_RESIDUE_MUL_INPUT_OFFSET + 24*3;
 pub const FP6_NON_RESIDUE_MUL_TOTAL: usize = FP6_NON_RESIDUE_MUL_C2 + FP2_NON_RESIDUE_MUL_TOTAL;
 
 // FP6 add
+/*
+    These trace offsets are for addition for two Fp6 elements. In essence it's three concatenated Fp2 additions. It needs 1 row.
+*/
 pub const FP6_ADDITION_0_OFFSET: usize = 0;
 pub const FP6_ADDITION_1_OFFSET: usize = FP6_ADDITION_0_OFFSET + FP2_ADDITION_TOTAL;
 pub const FP6_ADDITION_2_OFFSET: usize = FP6_ADDITION_1_OFFSET + FP2_ADDITION_TOTAL;
 pub const FP6_ADDITION_TOTAL: usize = FP6_ADDITION_2_OFFSET + FP2_ADDITION_TOTAL;
 
-// FP6 add
+// FP6 sub
+/*
+    These trace offsets are for subtraction for two Fp6 elements. In essence it's three concatenated Fp2 subtractions. It needs 1 row.
+*/
 pub const FP6_SUBTRACTION_0_OFFSET: usize = 0;
 pub const FP6_SUBTRACTION_1_OFFSET: usize = FP6_SUBTRACTION_0_OFFSET + FP2_SUBTRACTION_TOTAL;
 pub const FP6_SUBTRACTION_2_OFFSET: usize = FP6_SUBTRACTION_1_OFFSET + FP2_SUBTRACTION_TOTAL;
 pub const FP6_SUBTRACTION_TOTAL: usize = FP6_SUBTRACTION_2_OFFSET + FP2_SUBTRACTION_TOTAL;
 
 // MultiplyBy01
+/*
+    These trace offsets are for multiplyBy01 (super::native::Fp6::multiplyBy01) function. The Ti's are defined in the native function definition. It needs 12 rows.
+*/
 pub const MULTIPLY_BY_01_SELECTOR_OFFSET: usize = 0;
 pub const MULTIPLY_BY_01_INPUT_OFFSET: usize = MULTIPLY_BY_01_SELECTOR_OFFSET + 1;
 pub const MULTIPLY_BY_01_B0_OFFSET: usize = MULTIPLY_BY_01_INPUT_OFFSET + 24*3;
@@ -70,6 +86,9 @@ pub const MULTIPLY_BY_01_Z_CALC_OFFSET: usize = MULTIPLY_BY_01_T8_CALC_OFFSET + 
 pub const MULTIPLY_BY_01_TOTAL: usize = MULTIPLY_BY_01_Z_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL) * 2;
 
 // MultiplyBy1
+/*
+    These trace offsets are for multiplyBy1 (super::native::Fp6::multiplyBy1) function. The Ti's are defined in the native function definition. It needs 12 rows.
+*/
 pub const MULTIPLY_BY_1_SELECTOR_OFFSET: usize = 0;
 pub const MULTIPLY_BY_1_INPUT_OFFSET: usize = MULTIPLY_BY_1_SELECTOR_OFFSET + 1;
 pub const MULTIPLY_BY_1_B1_OFFSET: usize = MULTIPLY_BY_1_INPUT_OFFSET + 24*3;
@@ -80,6 +99,12 @@ pub const MULTIPLY_BY_1_Z_CALC_OFFSET: usize = MULTIPLY_BY_1_Y_CALC_OFFSET + TOT
 pub const MULTIPLY_BY_1_TOTAL: usize = MULTIPLY_BY_1_Z_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
 
 // Forbenius map Fp6
+/*
+    These trace offsets are for forbenius_map (super::native::Fp6::forbenius_map) function. It needs 12 rows.
+    FP6_FORBENIUS_MAP_DIV_OFFSET -> offset which stores integer division power/6.
+    FP6_FORBENIUS_MAP_REM_OFFSET -> offset which stores power%6.
+    FP6_FORBENIUS_MAP_BIT0_OFFSET, FP6_FORBENIUS_MAP_BIT1_OFFSET, FP6_FORBENIUS_MAP_BIT2_OFFSET -> offsets which store the bit decomposition of remainder (power%6).
+*/
 pub const FP6_FORBENIUS_MAP_SELECTOR_OFFSET: usize = 0;
 pub const FP6_FORBENIUS_MAP_INPUT_OFFSET: usize = FP6_FORBENIUS_MAP_SELECTOR_OFFSET + 1;
 pub const FP6_FORBENIUS_MAP_POW_OFFSET: usize = FP6_FORBENIUS_MAP_INPUT_OFFSET + 24*3;
@@ -95,6 +120,7 @@ pub const FP6_FORBENIUS_MAP_T1_CALC_OFFSET: usize = FP6_FORBENIUS_MAP_Y_CALC_OFF
 pub const FP6_FORBENIUS_MAP_Z_CALC_OFFSET: usize = FP6_FORBENIUS_MAP_T1_CALC_OFFSET + FP2_FORBENIUS_MAP_TOTAL_COLUMNS;
 pub const FP6_FORBENIUS_MAP_TOTAL_COLUMNS: usize = FP6_FORBENIUS_MAP_Z_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
 
+/// Fills the stark trace of fp6 addition. Inputs are 12*6 limbs each. Needs 1 row.
 pub fn fill_trace_addition_fp6<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -104,6 +130,7 @@ pub fn fill_trace_addition_fp6<F: RichField + Extendable<D>,
     fill_trace_addition_fp2(trace, &[x[4], x[5]], &[y[4], y[5]], row, start_col + FP6_ADDITION_2_OFFSET);
 }
 
+/// Fills trace of fp6 addition combined with reduction and range check. Inputs are 12*6 limbs each. Needs 1 row.
 pub fn fill_trace_addition_with_reduction_fp6<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -118,6 +145,7 @@ pub fn fill_trace_addition_with_reduction_fp6<F: RichField + Extendable<D>,
     }
 }
 
+/// Fills trace of fp6 subtraction combined with reduction and range check. Inputs are 12*6 limbs each. Needs 1 row. Fills trace of adding field prime p to x first, and then the trace for subtraction with y.
 pub fn fill_trace_subtraction_with_reduction_fp6<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -143,6 +171,7 @@ pub fn fill_trace_subtraction_with_reduction_fp6<F: RichField + Extendable<D>,
     }
 }
 
+/// Fills the stark trace of fp6 subtraction. Inputs are 12*6 limbs each. Needs 1 row. Assume x > y.
 pub fn fill_trace_subtraction_fp6<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -152,6 +181,7 @@ pub fn fill_trace_subtraction_fp6<F: RichField + Extendable<D>,
     fill_trace_subtraction_fp2(trace, &[x[4], x[5]], &[y[4], y[5]], row, start_col + FP6_SUBTRACTION_2_OFFSET);
 }
 
+/// Fills the stark trace of negation. Input is 12*6 limbs. Needs 1 row. In essence, it fills an addition trace with inputs as `x` and `-x`.
 pub fn fill_trace_negate_fp6<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -164,6 +194,7 @@ pub fn fill_trace_negate_fp6<F: RichField + Extendable<D>,
     fill_trace_addition_fp6(trace, &x.get_u32_slice(), &(-(*x)).get_u32_slice(), row, start_col);
 }
 
+/// Fills trace of [mul_by_nonresidue](super::native::mul_by_nonresidue) function. Input is 12*6 limbs. Needs 1 row.
 pub fn fill_trace_non_residue_multiplication_fp6<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -176,6 +207,7 @@ pub fn fill_trace_non_residue_multiplication_fp6<F: RichField + Extendable<D>,
     fill_trace_non_residue_multiplication(trace, &c2.get_u32_slice(), row, start_col + FP6_NON_RESIDUE_MUL_C2);
 }
 
+/// Fills stark trace for fp6 multiplication. Inputs are 12*6 limbs each. Needs 12 rows.
 pub fn fill_trace_fp6_multiplication<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -276,6 +308,7 @@ pub fn fill_trace_fp6_multiplication<F: RichField + Extendable<D>,
     }
 }
 
+/// Fills trace of [multiplyBy1](super::native::Fp6::multiplyBy1) function. Input is 12\*6 limbs and 12\*2 limbs. Needs 12 rows.
 pub fn fill_trace_multiply_by_1<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -306,6 +339,7 @@ pub fn fill_trace_multiply_by_1<F: RichField + Extendable<D>,
     generate_trace_fp2_mul(trace, c1.get_u32_slice(), b1.get_u32_slice(), start_row, end_row, start_col + MULTIPLY_BY_1_Z_CALC_OFFSET);
 }
 
+/// Fills trace of [multiplyBy01](super::native::Fp6::multiplyBy01) function. Input is 12\*6 limbs and two 12\*2 limbs. Needs 12 rows.
 pub fn fill_trace_multiply_by_01<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -371,6 +405,7 @@ pub fn fill_trace_multiply_by_01<F: RichField + Extendable<D>,
     }
 }
 
+/// Fills trace of [forbenius_map](super::native::Fp6::forbenius_map) function. Input is 12*6 limbs and usize. Needs 12 rows.
 pub fn fill_trace_fp6_forbenius_map<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -405,6 +440,7 @@ pub fn fill_trace_fp6_forbenius_map<F: RichField + Extendable<D>,
     generate_trace_fp2_mul(trace, t1.get_u32_slice(), forbenius_coefficients_2[pow%6].get_u32_slice(), start_row, end_row, start_col + FP6_FORBENIUS_MAP_Z_CALC_OFFSET);
 }
 
+/// Constraints fp2 addition. In essence, constraints three Fp2 addititons.
 pub fn add_addition_fp6_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -440,6 +476,7 @@ pub fn add_addition_fp6_constraints_ext_circuit<
     add_addition_fp2_constraints_ext_circuit(builder, yield_constr, local_values, start_col + FP6_ADDITION_2_OFFSET, bit_selector);
 }
 
+/// Constraints fp6 addition followed by reduction and range check constraints.
 pub fn add_addition_with_reduction_constranints_fp6<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -523,6 +560,7 @@ pub fn add_addition_with_reduction_constraints_fp6_ext_circuit<
 
 }
 
+/// Constraints fp6 subtraction. In essence, constraints three Fp2 subtractions.
 pub fn add_subtraction_fp6_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -558,6 +596,7 @@ pub fn add_subtraction_fp6_constraints_ext_circuit<
     add_subtraction_fp2_constraints_ext_circuit(builder, yield_constr, local_values, start_col + FP6_SUBTRACTION_2_OFFSET, bit_selector);
 }
 
+/// Constraints fp6 negation. First add constraints for fp6 addition. Followed by constraining the result of the addition with bls12-381 field prime p.
 pub fn add_negate_fp6_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -644,6 +683,7 @@ pub fn add_negate_fp6_constraints_ext_circuit<
     }
 }
 
+/// Constraints fp6 subtraction followed by reduction and range check constraints. First, constraints of adding field prime p to x to prevent overflow, because x > y assumption is not valid here. Then constraints the subtraction operation. Then reduce and range check constraints.
 pub fn add_subtraction_with_reduction_constranints_fp6<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -788,6 +828,7 @@ pub fn add_subtraction_with_reduction_constraints_fp6_ext_circuit<
     }
 }
 
+/// Constraints [mul_by_nonresidue](super::native::mul_by_nonresidue) function.
 pub fn add_non_residue_multiplication_fp6_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -835,6 +876,9 @@ pub fn add_non_residue_multiplication_fp6_constraints_ext_circuit<
     add_non_residue_multiplication_constraints_ext_circuit(builder, yield_constr, local_values, start_col + FP6_NON_RESIDUE_MUL_C2, bit_selector);
 }
 
+/// Constraints fp6 multiplication.
+///
+/// Constraints inputs across this and next row, wherever selector is set to on. Constraints all the Ti's (defined in the [function](super::native::mul_Fp6)) accordinng to their respective operations.
 pub fn add_fp6_multiplication_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -2072,6 +2116,9 @@ pub fn add_fp6_multiplication_constraints_ext_circuit<
 
 }
 
+/// Constraints [multiplyBy1](super::native::Fp6::multiplyBy1) function.
+///
+/// Constraints inputs across this and next row, wherever selector is set to on. Constraints all the Ti's (defined in the native function) accordinng to their respective operations.
 pub fn add_multiply_by_1_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -2261,6 +2308,9 @@ pub fn add_multiply_by_1_constraints_ext_circuit<
 
 }
 
+/// Constraints [multiplyBy01](super::native::Fp6::multiplyBy01) function.
+///
+/// Constraints inputs across this and next row, wherever selector is set to on. Constraints all the Ti's (defined in the native function) accordinng to their respective operations.
 pub fn add_multiply_by_01_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -2885,6 +2935,9 @@ pub fn add_multiply_by_01_constraints_ext_circuit<
     add_addition_with_reduction_constraints_ext_circuit(builder, yield_constr, local_values, start_col + MULTIPLY_BY_01_Z_CALC_OFFSET, bit_selector);
 }
 
+/// Constraints for [forbenius_map](super::native::Fp6::forbenius_map) function.
+///
+///  Constraints both input and power across this and next row, wherever selector is set to on. Constraint the divisor and remainder with power for `power == divisor*6 + remainder`. Constraints the bit decomposition as `remainder == bit0 + bit1*2 + bit2*4`. Selects the forbenius constant using mupliplexer logic. Then constraints fp2 forbenius map, multiplication, reduction and range check operations.
 pub fn add_fp6_forbenius_map_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,

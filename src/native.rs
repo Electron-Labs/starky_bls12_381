@@ -785,12 +785,13 @@ pub fn mul_Fp6(x: Fp6, y: Fp6) -> Fp6 {
 
 pub fn mul_by_nonresidue(x: [Fp; 6]) -> Fp6 {
     let mut ans: [Fp; 6] = [Fp::zero(); 6];
+    let c0 = Fp2([x[4], x[5]]).mul_by_nonresidue();
+    ans[0] = c0.0[0];
+    ans[1] = c0.0[1];
     ans[2] = x[0];
     ans[3] = x[1];
     ans[4] = x[2];
     ans[5] = x[3];
-    ans[0] = sub_fp(x[4], x[5]);
-    ans[1] = add_fp(x[4], x[5]);
     Fp6(ans)
 }
 

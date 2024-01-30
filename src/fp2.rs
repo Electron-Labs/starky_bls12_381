@@ -213,7 +213,7 @@ pub fn fill_trace_subtraction_fp2<F: RichField + Extendable<D>,
     fill_trace_subtraction_fp(trace, &x[1], &y[1], row, start_col + FP2_SUBTRACTION_1_OFFSET);
 }
 
-/// Fills the stark trace of multiplication following long multiplication. Inputs are 12*2 limbs and 1*2 limbs respectively. Needs 1 row.
+/// Fills the stark trace of multiplication following long multiplication. Inputs are 12\*2 limbs and 1\*2 limbs respectively. Needs 1 row.
 pub fn fill_trace_multiply_single_fp2<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -1247,7 +1247,7 @@ pub fn add_fp2_fp_mul_constraints_ext_circuit<
 
 /// Constraints for [multiply_by_b](super::native::Fp2::multiply_by_B) function.
 ///
-///  Constraints inputs across this and next row, wherever selector is set to on. Constraints x0*4, x1*4 multiplications. Constraints y input of the multiplications to 4. Constraints respective addition and subtraction operations followed by reduction and range check constraints.
+///  Constraints inputs across this and next row, wherever selector is set to on. Constraints x0\*4, x1\*4 multiplications. Constraints y input of the multiplications to 4. Constraints respective addition and subtraction operations followed by reduction and range check constraints.
 pub fn add_multiply_by_b_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
