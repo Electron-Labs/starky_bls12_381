@@ -1265,12 +1265,7 @@ pub fn inverse_fp2(x: Fp2) -> Fp2 {
 }
 
 
-// 1. Fp * Fp2 multiplication -> 2 Fps multiplication
-// 2. multiply_by_B -> 2 Fp multipllication, 1 addtn , 1 subtrcn
-// 3. negate Fp2 -> 1 addition
 pub fn calc_pairing_precomp(x: Fp2, y: Fp2, z: Fp2) -> Vec<[Fp2; 3]> {
-    //println!("z_invert {:?}", z.invert());
-    // phase 0
     let ax = x*(z.invert());
     let ay = y*(z.invert());
 
@@ -1287,37 +1282,22 @@ pub fn calc_pairing_precomp(x: Fp2, y: Fp2, z: Fp2) -> Vec<[Fp2; 3]> {
     let mut ell_coeff: Vec<[Fp2; 3]> = Vec::<[Fp2; 3]>::new();
 
     for i in (0..get_bls_12_381_parameter().bits()-1).rev() {
-        //println!("i -- {:?}", i);
-        // println!("Rx {:?}", Rx.to_biguint());
-        // println!("Ry {:?}", Ry.to_biguint());
-        // println!("Rz {:?}", Rz.to_biguint());
-        // *********
-        // phase 1
         let t0 = Ry * Ry;
-        // println!("t0 {:?}", t0.to_biguint());
         let t1 = Rz * Rz;
-        // println!("t1 {:?}", t1.to_biguint());
         let x0 = t1.mul(Fp::get_fp_from_biguint(BigUint::from(3 as u32)));
 
         let t2 = x0.multiply_by_B();
-        // println!("t2 {:?}", t2.to_biguint());
         let t3 = t2.mul(Fp::get_fp_from_biguint(BigUint::from(3 as u32)));
-        // println!("t3 {:?}", t3.to_biguint());
         let x1 = Ry * Rz;
-        // let x2 = x1.mul(Fp::get_fp_from_biguint(BigUint::from(2 as u32)));
         let t4 = x1.mul(Fp::get_fp_from_biguint(BigUint::from(2 as u32)));
-        // println!("t4 {:?}", t4.to_biguint());
         let x2 = t2-t0;
         let x3 = Rx*Rx;
-        let x4 = (Rx*Rx).mul(Fp::get_fp_from_biguint(BigUint::from(3 as u32)));
+        let x4 = x3.mul(Fp::get_fp_from_biguint(BigUint::from(3 as u32)));
 
         let x5 = -t4;
         ell_coeff.push(
             [x2, x4, x5]
         );
-        // println!("ell_coeff_0_0 {:?}", ell_coeff[0][0].to_biguint());
-        // println!("ell_coeff_0_1 {:?}", ell_coeff[0][1].to_biguint());
-        // println!("ell_coeff_0_2 {:?}", ell_coeff[0][2].to_biguint());
 
         let k = mod_inverse(BigUint::from(2 as u32), modulus());
 
@@ -1335,18 +1315,11 @@ pub fn calc_pairing_precomp(x: Fp2, y: Fp2, z: Fp2) -> Vec<[Fp2; 3]> {
         Rx = x8 * Fp::get_fp_from_biguint(k.clone());
         Ry = x11 - x13;
         Rz = t0 * t4;
-        // phase --1 end
-        // println!("Rx_ {:?}", Rx.to_biguint());
-        // println!("Ry_ {:?}", Ry.to_biguint());
-        // println!("Rz_ {:?}", Rz.to_biguint());
-        // phase 2
         if get_bls_12_381_parameter().bit(i) {
             let bit1_t0 = Qy * Rz;
             let bit1_t1 = Ry - bit1_t0;
-            // println!("bit1_t1__ {:?}", bit1_t1.to_biguint());
             let bit1_t2 = Qx * Rz;
             let bit1_t3 = Rx - bit1_t2;
-            // println!("t1__ {:?}", bit1_t3.to_biguint());
             let bit1_t4 = (bit1_t1 * Qx);
             let bit1_t5 = (bit1_t3 * Qy);
             let bit1_t6 = bit1_t4 - bit1_t5;
@@ -1356,32 +1329,21 @@ pub fn calc_pairing_precomp(x: Fp2, y: Fp2, z: Fp2) -> Vec<[Fp2; 3]> {
                 bit1_t7,
                 bit1_t3
             ]);
-            // println!("ell_coeff_1_0 {:?}", ell_coeff[1][0].to_biguint());
-            // println!("ell_coeff_1_1 {:?}", ell_coeff[1][1].to_biguint());
-            // println!("ell_coeff_1_2 {:?}", ell_coeff[1][2].to_biguint());
             let bit1_t8 = bit1_t3*bit1_t3;
-            // println!("t2__ {:?}", bit1_t8.to_biguint());
             let bit1_t9 = bit1_t8 * bit1_t3;
-            // println!("t3__ {:?}", bit1_t9.to_biguint());
             let bit1_t10 = bit1_t8* Rx;
-            // println!("t4__ {:?}", bit1_t10.to_biguint());
             let bit1_t11 = bit1_t1 * bit1_t1;
             let bit1_t12 = bit1_t11 * Rz;
             let bit1_t13 = (bit1_t10 * Fp::get_fp_from_biguint(BigUint::from(2 as u32)));
             let bit1_t14 = bit1_t9 - bit1_t13;
             let bit1_t15 = bit1_t14 + bit1_t12;
-            // println!("t5__ {:?}", bit1_t15.to_biguint());
             Rx = bit1_t3 * bit1_t15;
             let bit1_t16 = (bit1_t10 - bit1_t15);
             let bit1_t17 = bit1_t16 * bit1_t1;
             let bit1_t18 = bit1_t9 * Ry;
             Ry = bit1_t17 - bit1_t18;
             Rz = Rz * bit1_t9;
-            // println!("Rx__ {:?}", Rx.to_biguint());
-            // println!("Ry__ {:?}", Ry.to_biguint());
-            // println!("Rz__ {:?}", Rz.to_biguint());
         }
-        // println!("len --{:?}", ell_coeff.len());
     }
     return ell_coeff;
 }
