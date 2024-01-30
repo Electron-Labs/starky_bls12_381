@@ -1168,23 +1168,43 @@ impl Fp12 {
         let c1c1 = Fp2(self.0[8..10].try_into().unwrap());
         let c1c2 = Fp2(self.0[10..12].try_into().unwrap());
 
-        let (t3, t4)  = fp4_square(c0c0, c1c1);
-        let (t5, t6)  = fp4_square(c1c0, c0c2);
-        let (t7, t8)  = fp4_square(c0c1, c1c2);
+        let t0 = fp4_square(c0c0, c1c1);
+        let t1 = fp4_square(c1c0, c0c2);
+        let t2 = fp4_square(c0c1, c1c2);
+        let t3 = t2.1.mul_by_nonresidue();
 
-        let t9 = t8.mul_by_nonresidue();
+        let t4 = t0.0 - c0c0;
+        let t5 = t4 * two;
+        let c0 = t5 + t0.0;
 
-        Fp12(
-            [
-                (((t3 - c0c0) * two) + t3).0,
-                (((t5 - c0c1) * two) + t5).0,
-                (((t7 - c0c2) * two) + t7).0,
-                (((t9 + c1c0) * two) + t9).0,
-                (((t4 + c1c1) * two) + t4).0,
-                (((t6 + c1c2) * two) + t6).0,
-                
-            ].concat().try_into().unwrap()
-        )
+        let t6 = t1.0 - c0c1;
+        let t7 = t6 * two;
+        let c1 = t7 + t1.0;
+
+        let t8 = t2.0 - c0c2;
+        let t9 = t8 * two;
+        let c2 = t9 + t2.0;
+
+        let t10 = t3 + c1c0;
+        let t11 = t10 * two;
+        let c3 = t11 + t3;
+
+        let t12 = t0.1 + c1c1;
+        let t13 = t12 * two;
+        let c4 = t13 + t0.1;
+
+        let t14 = t1.1 + c1c2;
+        let t15 = t14 * two;
+        let c5 = t15 + t1.1;
+
+        Fp12([
+            c0.0,
+            c1.0,
+            c2.0,
+            c3.0,
+            c4.0,
+            c5.0,
+        ].concat().try_into().unwrap())
     }
 
     pub fn cyclotocmicExponent(&self) -> Fp12 {
