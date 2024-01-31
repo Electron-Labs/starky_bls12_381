@@ -25,7 +25,23 @@ We need to increase the default rust stack size because of the high number of co
 
 `RUST_MIN_STACK=16777216 cargo run --release`
 
-Note: Currently the program takes a long time to run because we build the plonky2 circuits each time. We plan to build and store these circuits, wile also parallelise the stark proof generation and first recursion to make it more performant.
+Note: Currently the program takes a long time to run because we build the plonky2 circuits each time. We plan to build and store these circuits, while also parallelise the stark proof generation and first recursion step to make it more performant.
+
+## Performance
+
+On AWS r6a.8xlarge machine:
+
+|Stark|Columns|Rows|Starky proving time|Plonky2 recursive gates|Plonky2 recursive build time|Plonky2 recursive proving time|
+|:-----|-------:|----:|------------------:|-----------------------:|----------------------------:|------------------------------:|
+|PairingPrecompStark|29376|1024|~4.5s|502790|~50s|~43s|
+|MillerLoopStark|97330|1024|~12.5s|1536789|~242s|~185s|
+|FP12MulStark|60285|16|~220ms|947380|~114s|~92s|
+|FinalExponentiateStark|73527|8192|~92s|1284720|~274s|~185s|
+
+For the aggregate plonky2 circuit:
+* Gates - 37517
+* Build time - ~4.4s
+* Proving time - ~3s
 
 ## Developer chat
 This work is convered under Ethereum Foundation grant. In case you wish to contribute or collaborate, you can join our ZK builder chat at - https://t.me/+GRX2LF9YSEwyNjQ1
