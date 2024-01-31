@@ -2,7 +2,7 @@ use num_bigint::BigUint;
 use plonky2::{plonk::config::{PoseidonGoldilocksConfig, GenericConfig}, util::timing::{TimingTree, self}};
 use starky::{config::StarkConfig, prover::prove, verifier::verify_stark_proof};
 use plonky2::field::types::Field;
-use crate::{native::{get_u32_vec_from_literal_24, modulus, get_u32_vec_from_literal, Fp2, Fp, mul_Fp2, Fp6, mul_Fp6, Fp12}, calc_pairing_precomp::{PairingPrecompStark, ELL_COEFFS_PUBLIC_INPUTS_OFFSET}, miller_loop::MillerLoopStark, final_exponentiate::FinalExponentiateStark};
+use crate::{native::{get_u32_vec_from_literal_24, modulus, get_u32_vec_from_literal, Fp2, Fp, mul_Fp2, Fp6, mul_Fp6, Fp12}, calc_pairing_precomp::{PairingPrecompStark, ELL_COEFFS_PUBLIC_INPUTS_OFFSET}, miller_loop::MillerLoopStark, final_exponentiate::FinalExponentiateStark, fp12_mul::FP12MulStark};
 use starky::util::trace_rows_to_poly_values;
 use std::time::Instant;
 
@@ -27,6 +27,7 @@ pub mod utils;
 pub mod calc_pairing_precomp;
 pub mod miller_loop;
 pub mod final_exponentiate;
+pub mod fp12_mul;
 
 fn calc_pairing_precomp<
     F: RichField + Extendable<D>,
@@ -62,7 +63,6 @@ fn calc_pairing_precomp<
         }
     }
     assert_eq!(public_inputs.len(), calc_pairing_precomp::PUBLIC_INPUTS);
-    // println!("constraint_degree: {:?}", stark.constraint_degree());
     let trace_poly_values = trace_rows_to_poly_values(trace);
     let t = Instant::now();
     let proof = prove::<F, C, PairingPrecompStark<F, D>, D>(
@@ -72,7 +72,7 @@ fn calc_pairing_precomp<
         &public_inputs,
         &mut TimingTree::default(),
     ).unwrap();
-    println!("time taken {:?}", t.elapsed());
+    println!("Time taken for calc_pairing_precomp stark proof {:?}", t.elapsed());
     verify_stark_proof(stark, proof.clone(), &config).unwrap();
     (stark, proof, config)
 }
@@ -118,7 +118,40 @@ fn miller_loop_main<
         &public_inputs,
         &mut TimingTree::default(),
     ).unwrap();
-    println!("Time taken to gen proof {:?}", s.elapsed());
+    println!("Time taken for miller_loop stark proof {:?}", s.elapsed());
+    verify_stark_proof(stark, proof.clone(), &config).unwrap();
+    (stark, proof, config)
+}
+
+fn fp12_mul_main<
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F=F>,
+    const D: usize
+>(x: Fp12, y: Fp12) -> (FP12MulStark<F, D>, starky::proof::StarkProofWithPublicInputs<F, C, D>, StarkConfig) {
+    let mut config = StarkConfig::standard_fast_config();
+    let stark = FP12MulStark::<F, D>::new(16);
+    let s = Instant::now();
+    let mut public_inputs = Vec::<F>::new();
+    for e in x.get_u32_slice().concat().iter() {
+        public_inputs.push(F::from_canonical_u32(*e));
+    }
+    for e in y.get_u32_slice().concat().iter() {
+        public_inputs.push(F::from_canonical_u32(*e));
+    }
+    for e in (x*y).get_u32_slice().concat().iter() {
+        public_inputs.push(F::from_canonical_u32(*e));
+    }
+    assert_eq!(public_inputs.len(), fp12_mul::PUBLIC_INPUTS);
+    let trace = stark.generate_trace(x, y);
+    let trace_poly_values = trace_rows_to_poly_values(trace);
+    let proof = prove::<F, C, FP12MulStark<F, D>, D>(
+        stark,
+        &config,
+        trace_poly_values,
+        &public_inputs,
+        &mut TimingTree::default(),
+    ).unwrap();
+    println!("Time taken for fp12_mul stark proof {:?}", s.elapsed());
     verify_stark_proof(stark, proof.clone(), &config).unwrap();
     (stark, proof, config)
 }
@@ -149,62 +182,20 @@ fn final_exponentiate_main<
         &public_inputs,
         &mut TimingTree::default(),
     ).unwrap();
-    println!("Time taken to gen proof {:?}", s.elapsed());
+    println!("Time taken for final_exponentiate stark proof {:?}", s.elapsed());
     verify_stark_proof(stark, proof.clone(), &config).unwrap();
     (stark, proof, config)
 }
 
-fn test_stark_circuit_constraints() {
-    const D: usize = 2;
-    type C = PoseidonGoldilocksConfig;
-    type F = <C as GenericConfig<D>>::F;
-    type S = FinalExponentiateStark<F, D>;
-
-    let stark = S::new(8192);
-    starky::stark_testing::test_stark_circuit_constraints::<F, C, S, D>(stark).unwrap();
-}
-
-fn test_recursive_stark_verifier() {
-    const D: usize = 2;
-    type C = PoseidonGoldilocksConfig;
-    type F = <C as GenericConfig<D>>::F;
-    type S = FinalExponentiateStark<F, D>;
-
-    let mut config = StarkConfig::standard_fast_config();
-    config.fri_config.rate_bits = 2;
-    let stark = S::new(8192);
-    let s = Instant::now();
-    let x = Fp12([Fp([3688549023, 1461121002, 158795132, 3031927502, 213444395, 4286532434, 2430134266, 3543104615, 1291488635, 3435685873, 4037455674, 79410575]), Fp([1360882579, 3002343476, 3086261481, 844031790, 3247736081, 1476716566, 2285276612, 2128837429, 3999081699, 4034708995, 1714901244, 52662165]), Fp([4104185655, 3701245790, 808982471, 2474474870, 86883540, 2861754577, 892037001, 426313854, 351740683, 2973656712, 2938329451, 98989231]), Fp([1750337445, 1055423710, 3314636215, 3832606429, 682495303, 3837288901, 3323765171, 317766258, 263941221, 4122823463, 817092141, 399622891]), Fp([2471624410, 3446467705, 2404303712, 4024275285, 3482111337, 2794822952, 3019262746, 126898360, 1076123014, 2901504703, 3932319379, 98921494]), Fp([2110261208, 2032742098, 990038150, 1352002937, 3987858999, 2819343369, 3282554204, 766147331, 208424639, 1602982609, 4112224585, 236233458]), Fp([2046547795, 3173960576, 2639561839, 1364192507, 1671233573, 2391309894, 3000205425, 1179450741, 3256341155, 3289801138, 1673317021, 168965912]), Fp([993521759, 35789000, 2528933762, 1397651268, 1549073333, 728869112, 2818328447, 3376956733, 4125103710, 3410833193, 3702323277, 402097749]), Fp([1613123474, 1843683341, 870050044, 2560600706, 933520115, 916747666, 4021709957, 20791057, 516247948, 3820524631, 3267700533, 122227566]), Fp([3600146516, 2812057600, 4150243859, 210373455, 465523258, 2359663667, 2064799726, 1552807009, 494361983, 2866737666, 172560447, 37672107]), Fp([13226053, 1019983919, 546396615, 4251229931, 250632233, 654320493, 1352696718, 2083058924, 1058634822, 2809138592, 900633632, 353005311]), Fp([340295756, 388460180, 1763111897, 2809758930, 1065140740, 2216989682, 2359308769, 1641074723, 1795030663, 945477827, 911995824, 168338922])]);
-    let mut public_inputs = Vec::<F>::new();
-    for e in x.get_u32_slice().concat().iter() {
-        public_inputs.push(F::from_canonical_u32(*e));
-    }
-    for e in x.final_exponentiate().get_u32_slice().concat().iter() {
-        public_inputs.push(F::from_canonical_u32(*e));
-    }
-    assert_eq!(public_inputs.len(), final_exponentiate::PUBLIC_INPUTS);
-    let trace = stark.generate_trace(x);
-    let trace_poly_values = trace_rows_to_poly_values(trace);
-    let proof = prove::<F, C, S, D>(
-        stark,
-        &config,
-        trace_poly_values,
-        &public_inputs,
-        &mut TimingTree::default(),
-    ).unwrap();
-    println!("Time taken to gen proof {:?}", s.elapsed());
-    verify_stark_proof(stark, proof.clone(), &config).unwrap();
-
-    let proof_tuple = recursive_proof::<F, C, S, C, D>(stark, proof, &config, true);
-}
-
-fn combine_proofs_stark() {
+fn aggregate_proof() {
     const D: usize = 2;
     type C = PoseidonGoldilocksConfig;
     type F = <C as GenericConfig<D>>::F;
     
     type S_PP = PairingPrecompStark<F, D>;
     type S_ML = MillerLoopStark<F, D>;
+    type S_FP12M = FP12MulStark<F, D>;
+    type S_FE = FinalExponentiateStark<F, D>;
 
     let px1 = Fp([1550366109, 1913070572, 760847606, 999580752, 3273422733, 182645169, 1634881460, 1043400770, 1526865253, 1101868890, 3712845450, 132602617]);
     let py1 = Fp([673719994, 1835763041, 382898653, 2031122452, 723494459, 2514182158, 1528654322, 3691097491, 369601280, 1847427497, 748256393, 201500165]);
@@ -212,21 +203,21 @@ fn combine_proofs_stark() {
     let q_y1 = Fp2([Fp([3944640261, 440162500, 3767697757, 767512216, 3185360355, 1355179671, 2310853452, 2890628660, 2539693039, 3306767406, 473197245, 198293246]), Fp([920955909, 775806582, 2117093864, 286632291, 2248224021, 4208799968, 2272086148, 4009382258, 291945614, 2017047933, 1541154483, 220533456])]);
     let q_z1 = Fp2([Fp([2780158026, 2572579871, 3558563268, 1947800745, 1784566622, 912901049, 1766882808, 1286945791, 2204464567, 728083964, 3377958885, 227852528]), Fp([1492897660, 2845803056, 3990009560, 3332584519, 1144621723, 1049137482, 2386536189, 2220905202, 28647458, 3875714686, 701911767, 391244403])]);
 
-    println!("pp1");
+    println!("calc_pairing_precomp stark 1");
     let (
         stark_pp1,
         proof_pp1,
         config_pp1
-    ) = calc_pairing_precomp(q_x1, q_y1, q_z1);
+    ) = calc_pairing_precomp::<F, C, D>(q_x1, q_y1, q_z1);
     let recursive_pp1 = recursive_proof::<F, C, S_PP, C, D>(stark_pp1, proof_pp1.clone(), &config_pp1, true);
 
-    // println!("ml1");
-    // let (
-    //     stark_ml1,
-    //     proof_ml1,
-    //     config_ml1,
-    // ) = miller_loop_main(px1, py1, q_x1, q_y1, q_z1);
-    // let recursive_ml1 = recursive_proof::<F, C, S_ML, C, D>(stark_ml1, proof_ml1.clone(), &config_ml1, true);
+    println!("miller_loop stark 1");
+    let (
+        stark_ml1,
+        proof_ml1,
+        config_ml1,
+    ) = miller_loop_main::<F, C, D>(px1, py1, q_x1, q_y1, q_z1);
+    let recursive_ml1 = recursive_proof::<F, C, S_ML, C, D>(stark_ml1, proof_ml1.clone(), &config_ml1, true);
 
     let px2 = Fp([3676489403, 4214943754, 4185529071, 1817569343, 387689560, 2706258495, 2541009157, 3278408783, 1336519695, 647324556, 832034708, 401724327]);
     let py2 = Fp([1187375073, 212476713, 2726857444, 3493644100, 738505709, 14358731, 3587181302, 4243972245, 1948093156, 2694721773, 3819610353, 146011265]);
@@ -234,104 +225,49 @@ fn combine_proofs_stark() {
     let q_y2 = Fp2([Fp([3291452691, 1526698400, 123085972, 4217256013, 2390597986, 3622429380, 1791215328, 2878530825, 3131550138, 3116253669, 3504636512, 151829271]), Fp([4123265126, 2752013218, 1556720399, 386948539, 3643514185, 2039427681, 3467442232, 2876818448, 3322584909, 2011252300, 838048598, 284195453])]);
     let q_z2 = Fp2([Fp([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), Fp([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])]);
 
-    // println!("pp2");
-    // let (
-    //     stark_pp2,
-    //     proof_pp2,
-    //     config_pp2
-    // ) = calc_pairing_precomp(q_x2, q_y2, q_z2);
-    // let recursive_pp2 = recursive_proof::<F, C, S_PP, C, D>(stark_pp2, proof_pp2.clone(), &config_pp2, true);
+    println!("calc_pairing_precomp stark 2");
+    let (
+        stark_pp2,
+        proof_pp2,
+        config_pp2
+    ) = calc_pairing_precomp::<F, C, D>(q_x2, q_y2, q_z2);
+    let recursive_pp2 = recursive_proof::<F, C, S_PP, C, D>(stark_pp2, proof_pp2.clone(), &config_pp2, true);
 
-    // println!("ml2");
-    // let (
-    //     stark_ml2,
-    //     proof_ml2,
-    //     config_ml2,
-    // ) = miller_loop_main(px2, py2, q_x2, q_y2, q_z2);
-    // let recursive_ml2 = recursive_proof::<F, C, S_ML, C, D>(stark_ml2, proof_ml2.clone(), &config_ml2, true);
+    println!("miller_loop stark 2");
+    let (
+        stark_ml2,
+        proof_ml2,
+        config_ml2,
+    ) = miller_loop_main::<F, C, D>(px2, py2, q_x2, q_y2, q_z2);
+    let recursive_ml2 = recursive_proof::<F, C, S_ML, C, D>(stark_ml2, proof_ml2.clone(), &config_ml2, true);
     
-    // combine_proofs_recursive::<F, C, S_PP, S_ML, C, D>(
-    //     stark_pp1,
-    //     proof_pp1,
-    //     &config_pp1,
-    //     stark_ml1,
-    //     proof_ml1,
-    //     &config_ml1,
-    //     stark_pp2,
-    //     proof_pp2,
-    //     &config_pp2,
-    //     stark_ml2,
-    //     proof_ml2,
-    //     &config_ml2,
-    // );
-    recursive_proof_step_two::<F, C, C, D>(&recursive_pp1).unwrap();//, &recursive_ml1, &recursive_pp2, &recursive_ml2).unwrap();
-}
+    let ml1_res = native::miller_loop(px1, py1, q_x1, q_y1, q_z1);
+    let ml2_res = native::miller_loop(px2, py2, q_x2, q_y2, q_z2);
+    println!("fp12_mul stark");
+    let (
+        stark_fp12_mul,
+        proof_fp12_mul,
+        config_fp12_mul,
+    ) = fp12_mul_main::<F, C, D>(ml1_res, ml2_res);
+    let recursive_fp12_mul = recursive_proof::<F, C, S_FP12M, C, D>(stark_fp12_mul, proof_fp12_mul.clone(), &config_fp12_mul, true);
 
-fn combine_proofs_recursive<
-    F: plonky2::hash::hash_types::RichField + plonky2::field::extension::Extendable<D>,
-    C: GenericConfig<D, F = F>,
-    S_PP: starky::stark::Stark<F, D> + Copy,
-    S_ML: starky::stark::Stark<F, D> + Copy,
-    InnerC: GenericConfig<D, F = F>,
-    const D: usize,
->(
-    stark_pp1: S_PP,
-    inner_proof_pp1: starky::proof::StarkProofWithPublicInputs<F, InnerC, D>,
-    inner_config_pp1: &StarkConfig,
-    stark_ml1: S_ML,
-    inner_proof_ml1: starky::proof::StarkProofWithPublicInputs<F, InnerC, D>,
-    inner_config_ml1: &StarkConfig,
-    stark_pp2: S_PP,
-    inner_proof_pp2: starky::proof::StarkProofWithPublicInputs<F, InnerC, D>,
-    inner_config_pp2: &StarkConfig,
-    stark_ml2: S_ML,
-    inner_proof_ml2: starky::proof::StarkProofWithPublicInputs<F, InnerC, D>,
-    inner_config_ml2: &StarkConfig,
-) where
-    InnerC::Hasher: plonky2::plonk::config::AlgebraicHasher<F>,
-{
-    let circuit_config = plonky2::plonk::circuit_data::CircuitConfig::standard_recursion_config();
-    let mut builder = plonky2::plonk::circuit_builder::CircuitBuilder::<F, D>::new(circuit_config);
-    let mut pw = plonky2::iop::witness::PartialWitness::new();
+    let final_exp_input = ml1_res * ml2_res;
+    println!("final exponentiate stark");
+    let (
+        stark_final_exp,
+        proof_final_exp,
+        config_final_exp
+    ) = final_exponentiate_main::<F, C, D>(final_exp_input);
+    let recursive_final_exp = recursive_proof::<F, C, S_FE, C, D>(stark_final_exp, proof_final_exp, &config_final_exp, true);
 
-    let degree_bits_pp1 = inner_proof_pp1.proof.recover_degree_bits(inner_config_pp1);
-    let pt_pp1 = starky::recursive_verifier::add_virtual_stark_proof_with_pis(&mut builder, stark_pp1, inner_config_pp1, degree_bits_pp1);
-
-    let degree_bits_ml1 = inner_proof_ml1.proof.recover_degree_bits(inner_config_ml1);
-    let pt_ml1 = starky::recursive_verifier::add_virtual_stark_proof_with_pis(&mut builder, stark_ml1, inner_config_ml1, degree_bits_ml1);
-
-    let degree_bits_pp2 = inner_proof_pp2.proof.recover_degree_bits(inner_config_pp2);
-    let pt_pp2 = starky::recursive_verifier::add_virtual_stark_proof_with_pis(&mut builder, stark_pp2, inner_config_pp2, degree_bits_pp2);
-
-    let degree_bits_ml2 = inner_proof_ml2.proof.recover_degree_bits(inner_config_ml2);
-    let pt_ml2 = starky::recursive_verifier::add_virtual_stark_proof_with_pis(&mut builder, stark_ml2, inner_config_ml2, degree_bits_ml2);
-
-    for i in 0..68*3*24 {
-        builder.connect(pt_pp1.public_inputs[calc_pairing_precomp::ELL_COEFFS_PUBLIC_INPUTS_OFFSET + i], pt_ml1.public_inputs[miller_loop::PIS_ELL_COEFFS_OFFSET + i]);
-    }
-
-    starky::recursive_verifier::set_stark_proof_with_pis_target(&mut pw, &pt_pp1, &inner_proof_pp1);
-    starky::recursive_verifier::set_stark_proof_with_pis_target(&mut pw, &pt_ml1, &inner_proof_ml1);
-    starky::recursive_verifier::verify_stark_proof_circuit::<F, InnerC, S_PP, D>(&mut builder, stark_pp1, pt_pp1, inner_config_pp1);
-    starky::recursive_verifier::verify_stark_proof_circuit::<F, InnerC, S_ML, D>(&mut builder, stark_ml1, pt_ml1, inner_config_ml1);
-
-    for i in 0..68*3*24 {
-        builder.connect(pt_pp2.public_inputs[calc_pairing_precomp::ELL_COEFFS_PUBLIC_INPUTS_OFFSET + i], pt_ml2.public_inputs[miller_loop::PIS_ELL_COEFFS_OFFSET + i]);
-    }
-
-    starky::recursive_verifier::set_stark_proof_with_pis_target(&mut pw, &pt_pp2, &inner_proof_pp2);
-    starky::recursive_verifier::set_stark_proof_with_pis_target(&mut pw, &pt_ml2, &inner_proof_ml2);
-    starky::recursive_verifier::verify_stark_proof_circuit::<F, InnerC, S_PP, D>(&mut builder, stark_pp2, pt_pp2, inner_config_pp2);
-    starky::recursive_verifier::verify_stark_proof_circuit::<F, InnerC, S_ML, D>(&mut builder, stark_ml2, pt_ml2, inner_config_ml2);
-
-
-
-    let data = builder.build::<C>();
-    println!("one step degree::{:?}", data.common.fri_params.degree_bits);
-    let s = Instant::now();
-    let proof = data.prove(pw).unwrap();
-    println!("plonky2 recursive proof step one in {:?}", s.elapsed());
-    data.verify(proof.clone()).unwrap();
+    aggregate_recursive_proof::<F, C, C, D>(
+        &recursive_pp1,
+        &recursive_ml1,
+        &recursive_pp2,
+        &recursive_ml2,
+        &recursive_fp12_mul,
+        &recursive_final_exp,
+    ).unwrap();
 }
 
 fn recursive_proof<
@@ -362,12 +298,10 @@ where
         builder.print_gate_counts(0);
     }
 
-    println!("one step gates::{:?}", builder.num_gates());
     let data = builder.build::<C>();
-    println!("one step degree::{:?}", data.common.fri_params.degree_bits);
     let s = Instant::now();
     let proof = data.prove(pw).unwrap();
-    println!("plonky2 recursive proof step one in {:?}", s.elapsed());
+    println!("time taken for plonky2 recursive proof {:?}", s.elapsed());
     data.verify(proof.clone()).unwrap();
     (proof, data.verifier_only, data.common)
 }
@@ -378,67 +312,107 @@ type ProofTuple<F, C, const D: usize> = (
     CommonCircuitData<F, D>,
 );
 
-fn recursive_proof_step_two<
+fn aggregate_recursive_proof<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
     InnerC: GenericConfig<D, F = F>,
     const D: usize,
 >(
     inner_pp1: &ProofTuple<F, InnerC, D>,
-    // inner_ml1: &ProofTuple<F, InnerC, D>,
-    // inner_pp2: &ProofTuple<F, InnerC, D>,
-    // inner_ml2: &ProofTuple<F, InnerC, D>,
+    inner_ml1: &ProofTuple<F, InnerC, D>,
+    inner_pp2: &ProofTuple<F, InnerC, D>,
+    inner_ml2: &ProofTuple<F, InnerC, D>,
+    inner_fp12m: &ProofTuple<F, InnerC, D>,
+    inner_fe: &ProofTuple<F, InnerC, D>,
 ) -> Result<ProofTuple<F, C, D>>
 where
     InnerC::Hasher: AlgebraicHasher<F>,
 {
     let config = CircuitConfig::standard_recursion_config();
     let (inner_proof_pp1, inner_vd_pp1, inner_cd_pp1) = inner_pp1;
-    // let (inner_proof_ml1, inner_vd_ml1, inner_cd_ml1) = inner_ml1;
-    // let (inner_proof_pp2, inner_vd_pp2, inner_cd_pp2) = inner_pp2;
-    // let (inner_proof_ml2, inner_vd_ml2, inner_cd_ml2) = inner_ml2;
+    let (inner_proof_ml1, inner_vd_ml1, inner_cd_ml1) = inner_ml1;
+    let (inner_proof_pp2, inner_vd_pp2, inner_cd_pp2) = inner_pp2;
+    let (inner_proof_ml2, inner_vd_ml2, inner_cd_ml2) = inner_ml2;
+    let (inner_proof_fp12m, inner_vd_fp12m, inner_cd_fp12m) = inner_fp12m;
+    let (inner_proof_fe, inner_vd_fe, inner_cd_fe) = inner_fe;
+
     let mut builder = CircuitBuilder::<F, D>::new(config.clone());
     let pt_pp1 = builder.add_virtual_proof_with_pis(inner_cd_pp1);
-    // let pt_ml1 = builder.add_virtual_proof_with_pis(inner_cd_ml1);
-    // let pt_pp2 = builder.add_virtual_proof_with_pis(inner_cd_pp2);
-    // let pt_ml2 = builder.add_virtual_proof_with_pis(inner_cd_ml2);
+    let pt_ml1 = builder.add_virtual_proof_with_pis(inner_cd_ml1);
+    let pt_pp2 = builder.add_virtual_proof_with_pis(inner_cd_pp2);
+    let pt_ml2 = builder.add_virtual_proof_with_pis(inner_cd_ml2);
+    let pt_fp12m = builder.add_virtual_proof_with_pis(inner_cd_fp12m);
+    let pt_fe = builder.add_virtual_proof_with_pis(inner_cd_fe);
 
-    // for i in 0..68*3*24 {
-    //     builder.connect(pt_pp1.public_inputs[calc_pairing_precomp::ELL_COEFFS_PUBLIC_INPUTS_OFFSET + i], pt_ml1.public_inputs[miller_loop::PIS_ELL_COEFFS_OFFSET + i]);
-    // }
+    for i in 0..68*3*24 {
+        builder.connect(pt_pp1.public_inputs[calc_pairing_precomp::ELL_COEFFS_PUBLIC_INPUTS_OFFSET + i], pt_ml1.public_inputs[miller_loop::PIS_ELL_COEFFS_OFFSET + i]);
+    }
 
-    // for i in 0..68*3*24 {
-    //     builder.connect(pt_pp2.public_inputs[calc_pairing_precomp::ELL_COEFFS_PUBLIC_INPUTS_OFFSET + i], pt_ml2.public_inputs[miller_loop::PIS_ELL_COEFFS_OFFSET + i]);
-    // }
+    for i in 0..24*3*2 {
+        builder.connect(pt_ml1.public_inputs[miller_loop::PIS_RES_OFFSET + i], pt_fp12m.public_inputs[fp12_mul::PIS_INPUT_X_OFFSET + i]);
+    }
+
+    for i in 0..68*3*24 {
+        builder.connect(pt_pp2.public_inputs[calc_pairing_precomp::ELL_COEFFS_PUBLIC_INPUTS_OFFSET + i], pt_ml2.public_inputs[miller_loop::PIS_ELL_COEFFS_OFFSET + i]);
+    }
+
+    for i in 0..24*3*2 {
+        builder.connect(pt_ml2.public_inputs[miller_loop::PIS_RES_OFFSET + i], pt_fp12m.public_inputs[fp12_mul::PIS_INPUT_Y_OFFSET + i]);
+    }
+
+    for i in 0..24*3*2 {
+        builder.connect(pt_fp12m.public_inputs[fp12_mul::PIS_OUTPUT_OFFSET + i], pt_fe.public_inputs[final_exponentiate::PIS_INPUT_OFFSET + i]);
+    }
+
+    for i in 0..24*3*2 {
+        let val = if i == 0 {
+            builder.one()
+        } else {
+            builder.zero()
+        };
+        builder.connect(pt_fe.public_inputs[final_exponentiate::PIS_OUTPUT_OFFSET + i], val);
+    }
 
     let inner_data_pp1 = builder.add_virtual_verifier_data(inner_cd_pp1.config.fri_config.cap_height);
-    // let inner_data_ml1 = builder.add_virtual_verifier_data(inner_cd_ml1.config.fri_config.cap_height);
-    // let inner_data_pp2 = builder.add_virtual_verifier_data(inner_cd_pp2.config.fri_config.cap_height);
-    // let inner_data_ml2 = builder.add_virtual_verifier_data(inner_cd_ml2.config.fri_config.cap_height);
+    let inner_data_ml1 = builder.add_virtual_verifier_data(inner_cd_ml1.config.fri_config.cap_height);
+    let inner_data_pp2 = builder.add_virtual_verifier_data(inner_cd_pp2.config.fri_config.cap_height);
+    let inner_data_ml2 = builder.add_virtual_verifier_data(inner_cd_ml2.config.fri_config.cap_height);
+    let inner_data_fp12m = builder.add_virtual_verifier_data(inner_cd_fp12m.config.fri_config.cap_height);
+    let inner_data_fe = builder.add_virtual_verifier_data(inner_cd_fe.config.fri_config.cap_height);
 
     builder.verify_proof::<InnerC>(&pt_pp1, &inner_data_pp1, inner_cd_pp1);
-    // builder.verify_proof::<InnerC>(&pt_ml1, &inner_data_ml1, inner_cd_ml1);
-    // builder.verify_proof::<InnerC>(&pt_pp2, &inner_data_pp2, inner_cd_pp2);
-    // builder.verify_proof::<InnerC>(&pt_ml2, &inner_data_ml2, inner_cd_ml2);
+    builder.verify_proof::<InnerC>(&pt_ml1, &inner_data_ml1, inner_cd_ml1);
+    builder.verify_proof::<InnerC>(&pt_pp2, &inner_data_pp2, inner_cd_pp2);
+    builder.verify_proof::<InnerC>(&pt_ml2, &inner_data_ml2, inner_cd_ml2);
+    builder.verify_proof::<InnerC>(&pt_fp12m, &inner_data_fp12m, inner_cd_fp12m);
+    builder.verify_proof::<InnerC>(&pt_fe, &inner_data_fe, inner_cd_fe);
     builder.print_gate_counts(0);
 
     let data = builder.build::<C>();
-    println!("step two degree {:?}", data.common.fri_params.degree_bits);
 
     let mut pw = PartialWitness::new();
     pw.set_proof_with_pis_target(&pt_pp1, inner_proof_pp1);
     pw.set_verifier_data_target(&inner_data_pp1, inner_vd_pp1);
-    // pw.set_proof_with_pis_target(&pt_ml1, inner_proof_ml1);
-    // pw.set_verifier_data_target(&inner_data_ml1, inner_vd_ml1);
-    // pw.set_proof_with_pis_target(&pt_pp2, inner_proof_pp2);
-    // pw.set_verifier_data_target(&inner_data_pp2, inner_vd_pp2);
-    // pw.set_proof_with_pis_target(&pt_ml2, inner_proof_ml2);
-    // pw.set_verifier_data_target(&inner_data_ml2, inner_vd_ml2);
+
+    pw.set_proof_with_pis_target(&pt_ml1, inner_proof_ml1);
+    pw.set_verifier_data_target(&inner_data_ml1, inner_vd_ml1);
+
+    pw.set_proof_with_pis_target(&pt_pp2, inner_proof_pp2);
+    pw.set_verifier_data_target(&inner_data_pp2, inner_vd_pp2);
+
+    pw.set_proof_with_pis_target(&pt_ml2, inner_proof_ml2);
+    pw.set_verifier_data_target(&inner_data_ml2, inner_vd_ml2);
+
+    pw.set_proof_with_pis_target(&pt_fp12m, inner_proof_fp12m);
+    pw.set_verifier_data_target(&inner_data_fp12m, inner_vd_fp12m);
+
+    pw.set_proof_with_pis_target(&pt_fe, inner_proof_fe);
+    pw.set_verifier_data_target(&inner_data_fe, inner_vd_fe);
 
     let mut timing = TimingTree::new("prove", Level::Debug);
     let s = Instant::now();
     let proof = plonky2_prove::<F, C, D>(&data.prover_only, &data.common, pw, &mut timing)?;
-    println!("plonky2 recursive proof step two in {:?}", s.elapsed());
+    println!("Time taken for aggregaet recusrive proof {:?}", s.elapsed());
     timing.print();
 
     data.verify(proof.clone())?;
@@ -448,9 +422,7 @@ where
 
 fn main() {
     std::thread::Builder::new().spawn(|| {
-        combine_proofs_stark();
-    //     // test_recursive_stark_verifier();
-    // //    test_stark_circuit_constraints();
+        aggregate_proof();
     }).unwrap().join().unwrap();
     return;
 }
