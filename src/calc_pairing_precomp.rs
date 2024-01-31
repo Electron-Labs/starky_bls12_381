@@ -1,28 +1,23 @@
 use std::{str::FromStr, cmp::min};
 
-use itertools::Itertools;
-use num_bigint::{BigUint, ToBigUint};
+use num_bigint::BigUint;
 use plonky2::{
     field::{
         extension::{Extendable, FieldExtension},
         packed::PackedField,
-        polynomial::PolynomialValues,
         types::Field,
     },
     hash::hash_types::RichField,
     iop::ext_target::ExtensionTarget,
-    util::transpose, plonk::circuit_builder::CircuitBuilder,
 };
 use starky::{
-    constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer},
+    constraint_consumer::ConstraintConsumer,
     evaluation_frame::{StarkEvaluationFrame, StarkFrame},
     stark::Stark,
 };
 
 use crate::native::{
-    add_u32_slices, add_u32_slices_12, get_bits_as_array, get_div_rem_modulus_from_biguint_12,
-    get_selector_bits_from_u32, get_u32_vec_from_literal, get_u32_vec_from_literal_24, modulus,
-    multiply_by_slice, sub_u32_slices, Fp, Fp2, calc_qs, calc_precomp_stuff_loop0, sub_u32_slices_12, mul_u32_slice_u32, mod_inverse, get_bls_12_381_parameter, calc_precomp_stuff_loop1,
+    get_u32_vec_from_literal, modulus, Fp, Fp2, calc_qs, calc_precomp_stuff_loop0, mod_inverse, get_bls_12_381_parameter, calc_precomp_stuff_loop1,
 };
 
 use crate::fp::*;
@@ -165,24 +160,24 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         // Calculate ay = y * (z_inv)
         generate_trace_fp2_mul(&mut trace, y, z_inv_slice, 0, self.num_rows-1, Y_MULT_Z_INV_OFFSET);
 
-        let (Qx, Qy, Qz) = calc_qs(
+        let (qx, qy, qz) = calc_qs(
             Fp2([Fp(x[0]), Fp(x[1])]), Fp2([Fp(y[0]), Fp(y[1])]), Fp2([Fp(z[0]), Fp(z[1])])
         );
 
-        // Fill Qx, Qy, Qz for all rows
+        // Fill qx, qy, qz for all rows
         for row in 0..self.num_rows {
             for i in 0..12 {
-                trace[row][QX_OFFSET + i] = F::from_canonical_u64(Qx.0[0].0[i] as u64);//trace[0][X_MULT_Z_INV_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i];
-                trace[row][QX_OFFSET + i + 12] = F::from_canonical_u64(Qx.0[1].0[i] as u64);//trace[0][X_MULT_Z_INV_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i];
-                trace[row][QY_OFFSET + i] = F::from_canonical_u64(Qy.0[0].0[i] as u64);//trace[0][Y_MULT_Z_INV_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i];
-                trace[row][QY_OFFSET + i + 12] = F::from_canonical_u64(Qy.0[1].0[i] as u64);//trace[0][Y_MULT_Z_INV_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i];
+                trace[row][QX_OFFSET + i] = F::from_canonical_u64(qx.0[0].0[i] as u64);//trace[0][X_MULT_Z_INV_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i];
+                trace[row][QX_OFFSET + i + 12] = F::from_canonical_u64(qx.0[1].0[i] as u64);//trace[0][X_MULT_Z_INV_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i];
+                trace[row][QY_OFFSET + i] = F::from_canonical_u64(qy.0[0].0[i] as u64);//trace[0][Y_MULT_Z_INV_OFFSET + Z1_REDUCE_OFFSET + REDUCED_OFFSET + i];
+                trace[row][QY_OFFSET + i + 12] = F::from_canonical_u64(qy.0[1].0[i] as u64);//trace[0][Y_MULT_Z_INV_OFFSET + Z2_REDUCE_OFFSET + REDUCED_OFFSET + i];
                 trace[row][QZ_OFFSET + i] = F::ZERO;
                 trace[row][QZ_OFFSET + i + 12] = F::ZERO;
             }
             trace[row][QZ_OFFSET] = F::ONE;
         }
 
-        let (mut Rx, mut Ry, mut Rz) = (Qx, Qy, Qz);
+        let (mut rx, mut ry, mut rz) = (qx, qy, qz);
         let mut bit_pos = 62;
         let mut bit1 = false;
         let num_coeffs = 68;
@@ -193,12 +188,12 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
                 if n == 0 {
                     trace[row][FIRST_LOOP_SELECTOR_OFFSET] = F::ONE;
                 }
-                assign_u32_in_series(&mut trace, row, RX_OFFSET, &Rx.get_u32_slice()[0]);
-                assign_u32_in_series(&mut trace, row, RX_OFFSET + 12, &Rx.get_u32_slice()[1]);
-                assign_u32_in_series(&mut trace, row, RY_OFFSET, &Ry.get_u32_slice()[0]);
-                assign_u32_in_series(&mut trace, row, RY_OFFSET + 12, &Ry.get_u32_slice()[1]);
-                assign_u32_in_series(&mut trace, row, RZ_OFFSET, &Rz.get_u32_slice()[0]);
-                assign_u32_in_series(&mut trace, row, RZ_OFFSET + 12, &Rz.get_u32_slice()[1]);
+                assign_u32_in_series(&mut trace, row, RX_OFFSET, &rx.get_u32_slice()[0]);
+                assign_u32_in_series(&mut trace, row, RX_OFFSET + 12, &rx.get_u32_slice()[1]);
+                assign_u32_in_series(&mut trace, row, RY_OFFSET, &ry.get_u32_slice()[0]);
+                assign_u32_in_series(&mut trace, row, RY_OFFSET + 12, &ry.get_u32_slice()[1]);
+                assign_u32_in_series(&mut trace, row, RZ_OFFSET, &rz.get_u32_slice()[0]);
+                assign_u32_in_series(&mut trace, row, RZ_OFFSET + 12, &rz.get_u32_slice()[1]);
                 if bit1 {
                     trace[row][BIT1_SELECTOR_OFFSET] = F::ONE;
                 }
@@ -212,11 +207,11 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
             }
             if !bit1 {
                 // Loop 0
-                let values_0 = calc_precomp_stuff_loop0(Rx, Ry, Rz, Qx, Qy, Qz);
+                let values_0 = calc_precomp_stuff_loop0(rx, ry, rz);
                 // t0
-                generate_trace_fp2_mul(&mut trace, Ry.get_u32_slice(), Ry.get_u32_slice(), start_row, end_row-1, T0_CALC_OFFSET);
+                generate_trace_fp2_mul(&mut trace, ry.get_u32_slice(), ry.get_u32_slice(), start_row, end_row-1, T0_CALC_OFFSET);
                 // t1
-                generate_trace_fp2_mul(&mut trace, Rz.get_u32_slice(), Rz.get_u32_slice(), start_row, end_row-1, T1_CALC_OFFSET);
+                generate_trace_fp2_mul(&mut trace, rz.get_u32_slice(), rz.get_u32_slice(), start_row, end_row-1, T1_CALC_OFFSET);
                 // x0
                 fill_trace_fp2_fp_mul(&mut trace, &values_0[4].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, X0_CALC_OFFSET);
                 // t2
@@ -224,7 +219,7 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
                 // t3
                 fill_trace_fp2_fp_mul(&mut trace, &values_0[6].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, T3_CALC_OFFSET);
                 // x1
-                generate_trace_fp2_mul(&mut trace, Ry.get_u32_slice(), Rz.get_u32_slice(), start_row, end_row-1, X1_CALC_OFFSET);
+                generate_trace_fp2_mul(&mut trace, ry.get_u32_slice(), rz.get_u32_slice(), start_row, end_row-1, X1_CALC_OFFSET);
                 // t4
                 fill_trace_fp2_fp_mul(&mut trace, &values_0[8].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("2").unwrap()).0, start_row, end_row-1, T4_CALC_OFFSET);
                 // x2
@@ -232,7 +227,7 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
                     fill_trace_subtraction_with_reduction(&mut trace, &values_0[6].get_u32_slice(), &values_0[3].get_u32_slice(), row, X2_CALC_OFFSET);
                 }
                 // x3
-                generate_trace_fp2_mul(&mut trace, Rx.get_u32_slice(), Rx.get_u32_slice(), start_row, end_row-1, X3_CALC_OFFSET);
+                generate_trace_fp2_mul(&mut trace, rx.get_u32_slice(), rx.get_u32_slice(), start_row, end_row-1, X3_CALC_OFFSET);
                 // x4
                 fill_trace_fp2_fp_mul(&mut trace, &values_0[10].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, X4_CALC_OFFSET);
                 // x5
@@ -244,7 +239,7 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
                     fill_trace_subtraction_with_reduction(&mut trace, &values_0[3].get_u32_slice(), &values_0[7].get_u32_slice(), row, X6_CALC_OFFSET);
                 }
                 // x7
-                generate_trace_fp2_mul(&mut trace, Rx.get_u32_slice(), Ry.get_u32_slice(), start_row, end_row-1, X7_CALC_OFFSET);
+                generate_trace_fp2_mul(&mut trace, rx.get_u32_slice(), ry.get_u32_slice(), start_row, end_row-1, X7_CALC_OFFSET);
                 // x8
                 generate_trace_fp2_mul(&mut trace, values_0[14].get_u32_slice(), values_0[15].get_u32_slice(), start_row, end_row-1, X8_CALC_OFFSET);
                 // x9
@@ -260,17 +255,17 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
                 generate_trace_fp2_mul(&mut trace, values_0[6].get_u32_slice(), values_0[6].get_u32_slice(), start_row, end_row-1, X12_CALC_OFFSET);
                 // x13
                 fill_trace_fp2_fp_mul(&mut trace, &values_0[20].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("3").unwrap()).0, start_row, end_row-1, X13_CALC_OFFSET);
-                // new Rx
+                // new rx
                 fill_trace_fp2_fp_mul(&mut trace, &values_0[16].get_u32_slice(), &k, start_row, end_row-1, NEW_RX_OFFSET);
-                // new Ry
+                // new ry
                 for row in start_row..end_row {
                     fill_trace_subtraction_with_reduction(&mut trace, &values_0[19].get_u32_slice(), &values_0[21].get_u32_slice(), row, NEW_RY_OFFSET);
                 }
-                // new Rz
+                // new rz
                 generate_trace_fp2_mul(&mut trace, values_0[3].get_u32_slice(), values_0[9].get_u32_slice(), start_row, end_row-1, NEW_RZ_OFFSET);
-                Rx = values_0[0];
-                Ry = values_0[1];
-                Rz = values_0[2];
+                rx = values_0[0];
+                ry = values_0[1];
+                rz = values_0[2];
 
                 bit1 = get_bls_12_381_parameter().bit(bit_pos);
                 bit_pos = if bit1 {
@@ -279,23 +274,23 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
                     bit_pos.checked_sub(1).unwrap_or(0)
                 }
             } else {
-                let values_1 = calc_precomp_stuff_loop1(Rx, Ry, Rz, Qx, Qy, Qz);
+                let values_1 = calc_precomp_stuff_loop1(rx, ry, rz, qx, qy);
                 // bit1_t0
-                generate_trace_fp2_mul(&mut trace, Qy.get_u32_slice(), Rz.get_u32_slice(), start_row, end_row-1, BIT1_T0_CALC_OFFSET);
+                generate_trace_fp2_mul(&mut trace, qy.get_u32_slice(), rz.get_u32_slice(), start_row, end_row-1, BIT1_T0_CALC_OFFSET);
                 // bit1_t1
                 for row in start_row..end_row {
-                    fill_trace_subtraction_with_reduction(&mut trace, &Ry.get_u32_slice(), &values_1[3].get_u32_slice(), row, BIT1_T1_CALC_OFFSET);
+                    fill_trace_subtraction_with_reduction(&mut trace, &ry.get_u32_slice(), &values_1[3].get_u32_slice(), row, BIT1_T1_CALC_OFFSET);
                 }
                 // bit1_t2
-                generate_trace_fp2_mul(&mut trace, Qx.get_u32_slice(), Rz.get_u32_slice(), start_row, end_row-1, BIT1_T2_CALC_OFFSET);
+                generate_trace_fp2_mul(&mut trace, qx.get_u32_slice(), rz.get_u32_slice(), start_row, end_row-1, BIT1_T2_CALC_OFFSET);
                 // bit1_t3
                 for row in start_row..end_row {
-                    fill_trace_subtraction_with_reduction(&mut trace, &Rx.get_u32_slice(), &values_1[5].get_u32_slice(), row, BIT1_T3_CALC_OFFSET);
+                    fill_trace_subtraction_with_reduction(&mut trace, &rx.get_u32_slice(), &values_1[5].get_u32_slice(), row, BIT1_T3_CALC_OFFSET);
                 }
                 // bit1_t4
-                generate_trace_fp2_mul(&mut trace, values_1[4].get_u32_slice(), Qx.get_u32_slice(), start_row, end_row-1, BIT1_T4_CALC_OFFSET);
+                generate_trace_fp2_mul(&mut trace, values_1[4].get_u32_slice(), qx.get_u32_slice(), start_row, end_row-1, BIT1_T4_CALC_OFFSET);
                 // bit1_t5
-                generate_trace_fp2_mul(&mut trace, values_1[6].get_u32_slice(), Qy.get_u32_slice(), start_row, end_row-1, BIT1_T5_CALC_OFFSET);
+                generate_trace_fp2_mul(&mut trace, values_1[6].get_u32_slice(), qy.get_u32_slice(), start_row, end_row-1, BIT1_T5_CALC_OFFSET);
                 // bit1_t6
                 for row in start_row..end_row {
                     fill_trace_subtraction_with_reduction(&mut trace, &values_1[7].get_u32_slice(), &values_1[8].get_u32_slice(), row, BIT1_T6_CALC_OFFSET);
@@ -309,11 +304,11 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
                 // bit1_t9
                 generate_trace_fp2_mul(&mut trace, values_1[11].get_u32_slice(), values_1[6].get_u32_slice(), start_row, end_row-1, BIT1_T9_CALC_OFFSET);
                 // bit1_t10
-                generate_trace_fp2_mul(&mut trace, values_1[11].get_u32_slice(), Rx.get_u32_slice(), start_row, end_row-1, BIT1_T10_CALC_OFFSET);
+                generate_trace_fp2_mul(&mut trace, values_1[11].get_u32_slice(), rx.get_u32_slice(), start_row, end_row-1, BIT1_T10_CALC_OFFSET);
                 // bit1_t11
                 generate_trace_fp2_mul(&mut trace, values_1[4].get_u32_slice(), values_1[4].get_u32_slice(), start_row, end_row-1, BIT1_T11_CALC_OFFSET);
                 // bit1_t12
-                generate_trace_fp2_mul(&mut trace, values_1[14].get_u32_slice(), Rz.get_u32_slice(), start_row, end_row-1, BIT1_T12_CALC_OFFSET);
+                generate_trace_fp2_mul(&mut trace, values_1[14].get_u32_slice(), rz.get_u32_slice(), start_row, end_row-1, BIT1_T12_CALC_OFFSET);
                 // bit1_t13
                 fill_trace_fp2_fp_mul(&mut trace, &values_1[13].get_u32_slice(), &Fp::get_fp_from_biguint(BigUint::from_str("2").unwrap()).0, start_row, end_row-1, BIT1_T13_CALC_OFFSET);
                 // bit1_t14
@@ -331,20 +326,20 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
                 // bit1_t17
                 generate_trace_fp2_mul(&mut trace, values_1[19].get_u32_slice(), values_1[4].get_u32_slice(), start_row, end_row-1, BIT1_T17_CALC_OFFSET);
                 // bit1_t18
-                generate_trace_fp2_mul(&mut trace, values_1[12].get_u32_slice(), Ry.get_u32_slice(), start_row, end_row-1, BIT1_T18_CALC_OFFSET);
-                // new Rx
+                generate_trace_fp2_mul(&mut trace, values_1[12].get_u32_slice(), ry.get_u32_slice(), start_row, end_row-1, BIT1_T18_CALC_OFFSET);
+                // new rx
                 generate_trace_fp2_mul(&mut trace, values_1[6].get_u32_slice(), values_1[18].get_u32_slice(), start_row, end_row-1, BIT1_RX_CALC_OFFSET);
-                // new Ry
+                // new ry
                 for row in start_row..end_row {
                     fill_trace_subtraction_with_reduction(&mut trace, &values_1[20].get_u32_slice(), &values_1[21].get_u32_slice(), row, BIT1_RY_CALC_OFFSET);
                 }
-                // new Rz
-                generate_trace_fp2_mul(&mut trace, Rz.get_u32_slice(), values_1[12].get_u32_slice(), start_row, end_row-1, BIT1_RZ_CALC_OFFSET);
+                // new rz
+                generate_trace_fp2_mul(&mut trace, rz.get_u32_slice(), values_1[12].get_u32_slice(), start_row, end_row-1, BIT1_RZ_CALC_OFFSET);
 
 
-                Rx = values_1[0];
-                Ry = values_1[1];
-                Rz = values_1[2];
+                rx = values_1[0];
+                ry = values_1[1];
+                rz = values_1[2];
                 bit1 = false;
                 bit_pos = bit_pos.checked_sub(1).unwrap_or(0);
             }

@@ -55,14 +55,6 @@ pub fn big_multiply(a: &[u32], b: &[u32]) -> Vec<u32> {
     c
 }
 
-// a % b
-pub fn big_mod(a: &[u32], b: &[u32]) -> Vec<u32> {
-    // 1. We calculate div out of field
-    // 2. we calculate rem out of field
-    // 3. a = b * div + rem
-    todo!()
-}
-
 #[cfg(test)]
 mod tests {
     use crate::big_arithmetic::{big_less_than, big_sub};

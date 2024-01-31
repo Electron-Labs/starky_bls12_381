@@ -1,13 +1,11 @@
-use num_bigint::BigUint;
-use plonky2::{plonk::config::{PoseidonGoldilocksConfig, GenericConfig}, util::timing::{TimingTree, self}};
+use plonky2::{plonk::config::{PoseidonGoldilocksConfig, GenericConfig}, util::timing::TimingTree};
 use starky::{config::StarkConfig, prover::prove, verifier::verify_stark_proof};
-use plonky2::field::types::Field;
-use crate::{native::{get_u32_vec_from_literal_24, modulus, get_u32_vec_from_literal, Fp2, Fp, mul_Fp2, Fp6, mul_Fp6, Fp12}, calc_pairing_precomp::{PairingPrecompStark, ELL_COEFFS_PUBLIC_INPUTS_OFFSET}, miller_loop::MillerLoopStark, final_exponentiate::FinalExponentiateStark, fp12_mul::FP12MulStark};
+use crate::{native::{Fp2, Fp, Fp12}, calc_pairing_precomp::PairingPrecompStark, miller_loop::MillerLoopStark, final_exponentiate::FinalExponentiateStark, fp12_mul::FP12MulStark};
 use starky::util::trace_rows_to_poly_values;
 use std::time::Instant;
 
 use plonky2::plonk::circuit_data::{CircuitConfig, CommonCircuitData, VerifierOnlyCircuitData};
-use plonky2::plonk::proof::{CompressedProofWithPublicInputs, ProofWithPublicInputs};
+use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::config::AlgebraicHasher;
@@ -128,7 +126,7 @@ fn fp12_mul_main<
     C: GenericConfig<D, F=F>,
     const D: usize
 >(x: Fp12, y: Fp12) -> (FP12MulStark<F, D>, starky::proof::StarkProofWithPublicInputs<F, C, D>, StarkConfig) {
-    let mut config = StarkConfig::standard_fast_config();
+    let config = StarkConfig::standard_fast_config();
     let stark = FP12MulStark::<F, D>::new(16);
     let s = Instant::now();
     let mut public_inputs = Vec::<F>::new();
@@ -192,10 +190,10 @@ fn aggregate_proof() {
     type C = PoseidonGoldilocksConfig;
     type F = <C as GenericConfig<D>>::F;
     
-    type S_PP = PairingPrecompStark<F, D>;
-    type S_ML = MillerLoopStark<F, D>;
-    type S_FP12M = FP12MulStark<F, D>;
-    type S_FE = FinalExponentiateStark<F, D>;
+    type PpStark = PairingPrecompStark<F, D>;
+    type MlStark = MillerLoopStark<F, D>;
+    type Fp12MulStark = FP12MulStark<F, D>;
+    type FeStark = FinalExponentiateStark<F, D>;
 
     let px1 = Fp([1550366109, 1913070572, 760847606, 999580752, 3273422733, 182645169, 1634881460, 1043400770, 1526865253, 1101868890, 3712845450, 132602617]);
     let py1 = Fp([673719994, 1835763041, 382898653, 2031122452, 723494459, 2514182158, 1528654322, 3691097491, 369601280, 1847427497, 748256393, 201500165]);
@@ -209,7 +207,7 @@ fn aggregate_proof() {
         proof_pp1,
         config_pp1
     ) = calc_pairing_precomp::<F, C, D>(q_x1, q_y1, q_z1);
-    let recursive_pp1 = recursive_proof::<F, C, S_PP, C, D>(stark_pp1, proof_pp1.clone(), &config_pp1, true);
+    let recursive_pp1 = recursive_proof::<F, C, PpStark, C, D>(stark_pp1, proof_pp1.clone(), &config_pp1, true);
 
     println!("miller_loop stark 1");
     let (
@@ -217,7 +215,7 @@ fn aggregate_proof() {
         proof_ml1,
         config_ml1,
     ) = miller_loop_main::<F, C, D>(px1, py1, q_x1, q_y1, q_z1);
-    let recursive_ml1 = recursive_proof::<F, C, S_ML, C, D>(stark_ml1, proof_ml1.clone(), &config_ml1, true);
+    let recursive_ml1 = recursive_proof::<F, C, MlStark, C, D>(stark_ml1, proof_ml1.clone(), &config_ml1, true);
 
     let px2 = Fp([3676489403, 4214943754, 4185529071, 1817569343, 387689560, 2706258495, 2541009157, 3278408783, 1336519695, 647324556, 832034708, 401724327]);
     let py2 = Fp([1187375073, 212476713, 2726857444, 3493644100, 738505709, 14358731, 3587181302, 4243972245, 1948093156, 2694721773, 3819610353, 146011265]);
@@ -231,7 +229,7 @@ fn aggregate_proof() {
         proof_pp2,
         config_pp2
     ) = calc_pairing_precomp::<F, C, D>(q_x2, q_y2, q_z2);
-    let recursive_pp2 = recursive_proof::<F, C, S_PP, C, D>(stark_pp2, proof_pp2.clone(), &config_pp2, true);
+    let recursive_pp2 = recursive_proof::<F, C, PpStark, C, D>(stark_pp2, proof_pp2.clone(), &config_pp2, true);
 
     println!("miller_loop stark 2");
     let (
@@ -239,7 +237,7 @@ fn aggregate_proof() {
         proof_ml2,
         config_ml2,
     ) = miller_loop_main::<F, C, D>(px2, py2, q_x2, q_y2, q_z2);
-    let recursive_ml2 = recursive_proof::<F, C, S_ML, C, D>(stark_ml2, proof_ml2.clone(), &config_ml2, true);
+    let recursive_ml2 = recursive_proof::<F, C, MlStark, C, D>(stark_ml2, proof_ml2.clone(), &config_ml2, true);
     
     let ml1_res = native::miller_loop(px1, py1, q_x1, q_y1, q_z1);
     let ml2_res = native::miller_loop(px2, py2, q_x2, q_y2, q_z2);
@@ -249,7 +247,7 @@ fn aggregate_proof() {
         proof_fp12_mul,
         config_fp12_mul,
     ) = fp12_mul_main::<F, C, D>(ml1_res, ml2_res);
-    let recursive_fp12_mul = recursive_proof::<F, C, S_FP12M, C, D>(stark_fp12_mul, proof_fp12_mul.clone(), &config_fp12_mul, true);
+    let recursive_fp12_mul = recursive_proof::<F, C, Fp12MulStark, C, D>(stark_fp12_mul, proof_fp12_mul.clone(), &config_fp12_mul, true);
 
     let final_exp_input = ml1_res * ml2_res;
     println!("final exponentiate stark");
@@ -258,7 +256,7 @@ fn aggregate_proof() {
         proof_final_exp,
         config_final_exp
     ) = final_exponentiate_main::<F, C, D>(final_exp_input);
-    let recursive_final_exp = recursive_proof::<F, C, S_FE, C, D>(stark_final_exp, proof_final_exp, &config_final_exp, true);
+    let recursive_final_exp = recursive_proof::<F, C, FeStark, C, D>(stark_final_exp, proof_final_exp, &config_final_exp, true);
 
     aggregate_recursive_proof::<F, C, C, D>(
         &recursive_pp1,

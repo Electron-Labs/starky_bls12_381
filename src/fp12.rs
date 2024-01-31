@@ -149,9 +149,9 @@ pub fn fill_trace_multiply_by_014<F: RichField + Extendable<D>,
     let c0 = Fp6(x.0[..6].try_into().unwrap());
     let c1 = Fp6(x.0[6..].try_into().unwrap());
 
-    let t0 = c0.multiplyBy01(*o0, *o1);
+    let t0 = c0.multiply_by_01(*o0, *o1);
     fill_trace_multiply_by_01(trace, &c0, o0, o1, start_row, end_row, start_col + MULTIPLY_BY_014_T0_CALC_OFFSET);
-    let t1 = c1.multiplyBy1(*o4);
+    let t1 = c1.multiply_by_1(*o4);
     fill_trace_multiply_by_1(trace, &c1, o4, start_row, end_row, start_col + MULTIPLY_BY_014_T1_CALC_OFFSET);
     let t2 = mul_by_nonresidue(t1.0);
     for row in start_row..end_row+1 {
@@ -170,7 +170,7 @@ pub fn fill_trace_multiply_by_014<F: RichField + Extendable<D>,
     for row in start_row..end_row+1 {
         fill_trace_addition_with_reduction(trace, &o1.get_u32_slice(), &o4.get_u32_slice(), row, start_col + MULTIPLY_BY_014_T4_CALC_OFFSET);
     }
-    let t5 = t3.multiplyBy01(*o0, t4);
+    let t5 = t3.multiply_by_01(*o0, t4);
     fill_trace_multiply_by_01(trace, &t3, o0, &t4, start_row, end_row, start_col + MULTIPLY_BY_014_T5_CALC_OFFSET);
     let t6 = t5-t0;
     for row in start_row..end_row+1 {
@@ -360,7 +360,7 @@ pub fn fill_trace_cyclotomic_exp<F: RichField + Extendable<D>,
             z = z * (*x);
         } else {
             fill_trace_cyclotomic_sq(trace, &z, s_row, e_row, start_col + Z_CYCLOTOMIC_SQ_OFFSET);
-            z = z.cyclotomicSquare();
+            z = z.cyclotomic_square();
         }
         if get_bls_12_381_parameter().bit(i) && !bitone {
             bitone = true;
