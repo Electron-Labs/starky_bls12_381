@@ -26,3 +26,6 @@ We need to increase the default rust stack size because of the high number of co
 `RUST_MIN_STACK=16777216 cargo run --release`
 
 Note: Currently the program takes a long time to run because we build the plonky2 circuits each time. We plan to build and store these circuits, wile also parallelise the stark proof generation and first recursion to make it more performant.
+
+## Developer chat
+This work is convered under Ethereum Foundation grant. In case you wish to contribute or collaborate, you can join our ZK builder chat at - https://t.me/+GRX2LF9YSEwyNjQ1
