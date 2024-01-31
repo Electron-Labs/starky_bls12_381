@@ -419,6 +419,7 @@ where
 }
 
 fn main() {
+    env_logger::init();
     std::thread::Builder::new().spawn(|| {
         aggregate_proof();
     }).unwrap().join().unwrap();
