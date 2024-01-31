@@ -4,6 +4,9 @@ use starky::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsume
 use crate::{native::{fp4_square, get_bls_12_381_parameter, mul_by_nonresidue, Fp, Fp12, Fp2, Fp6}, utils::*, fp::*, fp2::*, fp6::*};
 
 // MultiplyBy014
+/*
+    These trace offsets are for multiplyBy014 (super::native::Fp12::multiplyBy014) function. The Ti's are defined in the native function definition. It needs 12 rows.
+*/
 pub const MULTIPLY_BY_014_SELECTOR_OFFSET: usize = 0;
 pub const MULTIPLY_BY_014_INPUT_OFFSET: usize = MULTIPLY_BY_014_SELECTOR_OFFSET + 1;
 pub const MULTIPLY_BY_014_O0_OFFSET: usize = MULTIPLY_BY_014_INPUT_OFFSET + 24*3*2;
@@ -21,6 +24,9 @@ pub const MULTIPLY_BY_014_Y_CALC_OFFSET: usize = MULTIPLY_BY_014_T6_CALC_OFFSET 
 pub const MULTIPLY_BY_014_TOTAL: usize = MULTIPLY_BY_014_Y_CALC_OFFSET + FP6_ADDITION_TOTAL + FP6_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*6;
 
 // FP12 multiplication offsets
+/*
+    These trace offsets are for fp12 multiplication. It needs 12 rows. The Ti's are defined in (super::native::mul_fp_12).
+*/
 pub const FP12_MUL_SELECTOR_OFFSET: usize = 0;
 pub const FP12_MUL_X_INPUT_OFFSET: usize = FP12_MUL_SELECTOR_OFFSET + 1;
 pub const FP12_MUL_Y_INPUT_OFFSET: usize = FP12_MUL_X_INPUT_OFFSET + 24*3*2;
@@ -35,6 +41,10 @@ pub const FP12_MUL_T6_CALC_OFFSET: usize = FP12_MUL_T5_CALC_OFFSET + FP6_MUL_TOT
 pub const FP12_MUL_Y_CALC_OFFSET: usize = FP12_MUL_T6_CALC_OFFSET + FP6_ADDITION_TOTAL + FP6_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*6;
 pub const FP12_MUL_TOTAL_COLUMNS: usize = FP12_MUL_Y_CALC_OFFSET + FP6_ADDITION_TOTAL + FP6_SUBTRACTION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*6;
 
+// Cyclotomic square offsets
+/*
+    These trace offsets are for cyclotomicSquare function (super::native::Fp12::cyclotomicSquare). It needs 12 rows. The Ti's are defined in native function.
+*/
 pub const CYCLOTOMIC_SQ_SELECTOR_OFFSET: usize = 0;
 pub const CYCLOTOMIC_SQ_INPUT_OFFSET: usize = CYCLOTOMIC_SQ_SELECTOR_OFFSET + 1;
 pub const CYCLOTOMIC_SQ_T0_CALC_OFFSET: usize = CYCLOTOMIC_SQ_INPUT_OFFSET + 24*3*2;
@@ -61,6 +71,20 @@ pub const CYCLOTOMIC_SQ_T15_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T14_CALC_OFFSET +
 pub const CYCLOTOMIC_SQ_C5_CALC_OFFSET: usize = CYCLOTOMIC_SQ_T15_CALC_OFFSET + FP2_FP_TOTAL_COLUMNS;
 pub const CYCLOTOMIC_SQ_TOTAL_COLUMNS: usize = CYCLOTOMIC_SQ_C5_CALC_OFFSET + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*2;
 
+// Cyclotomic exponent offsets
+/*
+    These offsets are for cyclotomicExponent (super::native::Fp12::cyclotomicExponent) function. Needs 12*70 rows. The offsets are defined such that each 0 bit of the bls12-381 parameter takes 12 rows (one operation, cyclotomicSquare) and each 1 bit takes 12*2 rows (two operations, cyclotomicSquare and fp12 multiplication).
+    CYCLOTOMIC_EXP_START_ROW -> selector which is 1 for the first row of the trace.
+    FIRST_ROW_SELECTOR_OFFSET -> selector which is 1 for the starting row for each operation. Hence, every 12th row, it is set 1.
+    RES_ROW_SELECTOR_OFFSET -> selector which is 1 for the row which contains the final result of cyclotomicExponent.
+    BIT1_SELECTOR_OFFSET -> selector which is 1 for each 1 bit of bls12-381 parameter. It is set 1 for 12 rows continous rows.
+    INPUT_OFFSET -> offset where input for the function is set.
+    Z_OFFSET -> offset where result of the previous computation is stored.
+    Z_CYCLOTOMIC_SQ_OFFSET -> offset containing the computation for cyclotomicSquare function.
+    Z_MUL_INPUT_OFFSET -> offset containing the computation for fp12 multiplication.
+
+    Z_CYCLOTMIC_SQ_OFFSET and Z_MUL_INPUT_OFFSET are equal because both the operations are never done in the same rows. In a single row, either cyclotomic square is being computed or fp12 multiplication is being computed.
+*/
 pub const CYCLOTOMIC_EXP_SELECTOR_OFFSET: usize = 0;
 pub const CYCLOTOMIC_EXP_START_ROW: usize = CYCLOTOMIC_EXP_SELECTOR_OFFSET + 1;
 pub const FIRST_ROW_SELECTOR_OFFSET: usize = CYCLOTOMIC_EXP_START_ROW + 1;
@@ -73,6 +97,12 @@ pub const Z_MUL_INPUT_OFFSET: usize = Z_OFFSET + 24*3*2;
 pub const CYCLOTOMIC_EXP_TOTAL_COLUMNS: usize = Z_MUL_INPUT_OFFSET + FP12_MUL_TOTAL_COLUMNS;
 
 // Forbenius map Fp12
+/*
+    These trace offsets are for forbenius_map (super::native::Fp12::forbenius_map) function. It needs 12 rows.
+    FP12_FORBENIUS_MAP_DIV_OFFSET -> offset which stores integer division power/12.
+    FP12_FORBENIUS_MAP_REM_OFFSET -> offset which stores power%12.
+    FP12_FORBENIUS_MAP_BIT0_OFFSET, FP12_FORBENIUS_MAP_BIT1_OFFSET, FP12_FORBENIUS_MAP_BIT2_OFFSET, FP12_FORBENIUS_MAP_BIT3_OFFSET -> offsets which store the bit decomposition of remainder (power%12).
+*/
 pub const FP12_FORBENIUS_MAP_SELECTOR_OFFSET: usize = 0;
 pub const FP12_FORBENIUS_MAP_INPUT_OFFSET: usize = FP12_FORBENIUS_MAP_SELECTOR_OFFSET + 1;
 pub const FP12_FORBENIUS_MAP_POW_OFFSET: usize = FP12_FORBENIUS_MAP_INPUT_OFFSET + 24*3*2;
@@ -89,11 +119,16 @@ pub const FP12_FORBENIUS_MAP_C1_CALC_OFFSET: usize = FP12_FORBENIUS_MAP_C0_CALC_
 pub const FP12_FORBENIUS_MAP_C2_CALC_OFFSET: usize = FP12_FORBENIUS_MAP_C1_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
 pub const FP12_FORBENIUS_MAP_TOTAL_COLUMNS: usize = FP12_FORBENIUS_MAP_C2_CALC_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
 
+// Fp12 conjugate
+/*
+    These trace offsets are for fp12 conjugate (super::native::Fp12::conjugate). It needs 1 row.
+*/
 pub const FP12_CONJUGATE_INPUT_OFFSET: usize = 0;
 pub const FP12_CONJUGATE_OUTPUT_OFFSET: usize = FP12_CONJUGATE_INPUT_OFFSET + 24*3*2;
 pub const FP12_CONJUGATE_ADDITIION_OFFSET: usize = FP12_CONJUGATE_OUTPUT_OFFSET + 24*3*2;
 pub const FP12_CONJUGATE_TOTAL: usize = FP12_CONJUGATE_ADDITIION_OFFSET + FP6_ADDITION_TOTAL;
 
+/// Fills trace of [multiplyBy014](super::native::Fp12::multiplyBy014) function. Input is 12\*12 limbs and three 12\*2 limbs. Needs 12 rows.
 pub fn fill_trace_multiply_by_014<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -147,6 +182,7 @@ pub fn fill_trace_multiply_by_014<F: RichField + Extendable<D>,
     }
 }
 
+/// Fills stark trace for fp12 multiplication. Inputs are 12*12 limbs each. Needs 12 rows.
 pub fn fill_trace_fp12_multiplication<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -194,6 +230,7 @@ pub fn fill_trace_fp12_multiplication<F: RichField + Extendable<D>,
     }
 }
 
+/// Fills trace of [cyclotomicSquare](super::native::Fp12::cyclotomicSquare) function. Input is 12*12 limbs. Needs 12 rows.
 pub fn fill_trace_cyclotomic_sq<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -292,6 +329,7 @@ pub fn fill_trace_cyclotomic_sq<F: RichField + Extendable<D>,
     }
 }
 
+/// Fills trace of [cyclotomicExponent](super::native::Fp12::cyclotocmicExponent) function. Input is 12\*12 limbs. Needs 12\*70 rows. For each bit 0 of bls12-381 parameter, fills the trace for cyclotomicSquare computation. For each bit 1 of the bls12-381 parameter, fills trace for cyclotomic square computation in 12 rows, then fills the trace for fp12 multiplication computation in the next 12 rows and also sets `trace[row][start_col + BIT1_SELECTOR_OFFSET]` to 1 for these rows. After going through all bits of the bls12-381 parameter, fills the result in the next row's Z_OFFSET, while also setting RES_ROW_SELECTOR to 1.
 pub fn fill_trace_cyclotomic_exp<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -335,6 +373,7 @@ pub fn fill_trace_cyclotomic_exp<F: RichField + Extendable<D>,
     assign_u32_in_series(trace, start_row + 70*12, start_col + Z_OFFSET, &z.get_u32_slice().concat());
 }
 
+/// Fills trace of [forbenius_map](super::native::Fp12::forbenius_map) function. Input is 12*12 limbs and usize. Needs 12 rows.
 pub fn fill_trace_fp12_forbenius_map<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -369,6 +408,7 @@ pub fn fill_trace_fp12_forbenius_map<F: RichField + Extendable<D>,
     generate_trace_fp2_mul(trace, c2.get_u32_slice(), coeff.get_u32_slice(), start_row, end_row, start_col + FP12_FORBENIUS_MAP_C2_CALC_OFFSET);
 }
 
+/// Fill trace of [conjugate](super::native::Fp12::conjugate) function. Input is 12*12 limbs. Needs 1 row.
 pub fn fill_trace_fp12_conjugate<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -381,6 +421,9 @@ pub fn fill_trace_fp12_conjugate<F: RichField + Extendable<D>,
     fill_trace_addition_fp6(trace, &x_fp6.get_u32_slice(), &conjugat_fp6.get_u32_slice(), row, start_col + FP12_CONJUGATE_ADDITIION_OFFSET);
 }
 
+/// Constraints [multiplyBy014](super::native::Fp12::multiplyBy014) function.
+///
+/// Constraints inputs across this and next row, wherever selector is set to on. Constraints all the Ti's (defined in the native function) accordinng to their respective operations.
 pub fn add_multiply_by_014_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -976,6 +1019,9 @@ pub fn add_multiply_by_014_constraints_ext_circuit<
     add_subtraction_with_reduction_constraints_fp6_ext_circuit(builder, yield_constr, local_values, start_col + MULTIPLY_BY_014_Y_CALC_OFFSET, bit_selector);
 }
 
+/// Constraints fp12 multiplication.
+///
+/// Constraints inputs across this and next row, wherever selector is set to on. Constraints all the Ti's (defined in the [function](super::native::mul_fp_12)) accordinng to their respective operations.
 pub fn add_fp12_multiplication_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -1504,6 +1550,9 @@ pub fn add_fp12_multiplication_constraints_ext_circuit<
     add_subtraction_with_reduction_constraints_fp6_ext_circuit(builder, yield_constr, local_values, start_col + FP12_MUL_Y_CALC_OFFSET, bit_selector);
 }
 
+/// Constraints for [cyclotomicSquare](super::native::Fp12::cyclotomicSquare) function.
+///
+/// Constraints inputs across this and next row, wherever selector is set to on. Constraints all the Ti's (defined in the native function) accordinng to their respective operations.
 pub fn add_cyclotomic_sq_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -2425,6 +2474,9 @@ pub fn add_cyclotomic_sq_constraints_ext_circuit<F: RichField + Extendable<D>,
     add_addition_with_reduction_constraints_ext_circuit(builder, yield_constr, local_values, start_col + CYCLOTOMIC_SQ_C5_CALC_OFFSET, bit_selector);
 }
 
+/// Constraints for [cyclotomicExponent](super::native::Fp12::cyclotocmicExponent) function.
+///
+/// Constraints inputs across this and next row, wherever selector is set to on. When `CYCLOTOMIC_EXP_START_ROW` is set, constraints z to be 1. Creates two `bit_selector` values from `BIT1_SELECTOR`. Constraints cyclotomicSquare function with `bit0` and constraints fp12 multiplication with `bit1`. What it does is switch on the constraints of cyclotomicSquare when `BIT1_SELECTOR` is off and switch on the constraints of fp12 multiplication when `BIT1_SELECTOR` is on. When `FIRST_ROW_SELECTOR` is on in the next row, constraints z value of the next row with result of cyclotmicSquare function and `bit0` of current row and constraints z value of the next row with result of fp12 multiplication and `bit1` of current row.
 pub fn add_cyclotomic_exp_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -2689,6 +2741,9 @@ pub fn add_cyclotomic_exp_constraints_ext_circuit<F: RichField + Extendable<D>,
     }
 }
 
+/// Constraints for [forbenius_map](super::native::Fp12::forbenius_map) function.
+///
+///  Constraints both input and power across this and next row, wherever selector is set to on. Constraint the divisor and remainder with power for `power == divisor*12 + remainder`. Constraints the bit decomposition as `remainder == bit0 + bit1*2 + bit2*4 + bit3*8`. Selects the forbenius constant using mupliplexer logic. Then constraints fp6 forbenius map, multiplication, reduction and range check operations.
 pub fn add_fp12_forbenius_map_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -3009,6 +3064,7 @@ pub fn add_fp12_forbenius_map_constraints_ext_circuit<F: RichField + Extendable<
     add_fp2_mul_constraints_ext_circuit(builder, yield_constr, local_values, next_values, start_col + FP12_FORBENIUS_MAP_C2_CALC_OFFSET, bit_selector);
 }
 
+/// Constraints for [conjugate](super::native::Fp12::conjugate) function.
 pub fn add_fp12_conjugate_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,

@@ -1,9 +1,28 @@
+//! This module contains functions for filling the stark trace and adding constraints for the corresponding trace for some Fp2 operations (multiplication, addition, subtraction, etc). One Fp2 element is represented as \[u32; 24\] inside the trace. But most of the time, Fp2 elements are broken up into two Fp elements, hence represented as two \[u32; 12\].
 use num_bigint::BigUint;
 use plonky2::{field::{extension::{Extendable, FieldExtension}, packed::PackedField, types::Field}, hash::hash_types::RichField, iop::ext_target::ExtensionTarget, plonk::circuit_builder::CircuitBuilder};
 use starky::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
 use crate::{native::{get_u32_vec_from_literal, get_u32_vec_from_literal_24, modulus, Fp, Fp2}, utils::*, fp::*};
 
 // Fp2 Multiplication layout offsets
+/*
+    These trace offsets are for Fp2 multiplication. It needs 12 rows.
+    [x0, x1] * [y0, y1] = [x0*y0 - x1*y1, x0*y1 + x1*y0]
+    FP2_FP2_SELECTOR_OFFSET -> Selector to ensure that the input is same across all rows. Set 1 in all rows except last one.
+    FP2_FP2_X_INPUT_OFFSET -> offset where input x is set.
+    FP2_FP2_Y_INPUT_OFFSET -> offset where input y is set.
+    X_0_Y_0_MULTIPLICATION_OFFSET -> offset where x0*y0 multiplication is set.
+    X_1_Y_1_MULTIPLICATION_OFFSET -> offset where x1*y1 multiplication is set.
+    Z1_ADD_MODULUS_OFFSET -> Addition operation to add x0*y0 + p*p (required because we don't know if x0*y0 - x1*y1 will overflow).
+    Z1_SUBTRACTION_OFFSET -> Subtraction operation for x0*y0 + p*p - x1*y1.
+    Z1_REDUCE_OFFSET -> Reduction operation for Z1 (z1 is the real part of the result).
+    Z1_RANGECHECK_OFFSET -> Range check the result of Z1 reduction.
+    X_0_Y_1_MULTIPLICATION_OFFSET -> offset where x0*y1 multiplication is set.
+    X_1_Y_0_MULTIPLICATION_OFFSET -> offset where x1*y0 multiplication is set.
+    Z2_ADDITION_OFFSET -> Addition operation for x0*y1 + x1*y0.
+    Z2_REDUCE_OFFSET -> Reduction operation for Z2 (z2 is the imaginary part of the result).
+    Z2_RANGECHECK_OFFSET -> Range check the result of Z2 reduction.
+*/
 pub const FP2_FP2_SELECTOR_OFFSET: usize = 0;
 pub const FP2_FP2_X_INPUT_OFFSET: usize = FP2_FP2_SELECTOR_OFFSET + 1;
 pub const FP2_FP2_Y_INPUT_OFFSET: usize = FP2_FP2_X_INPUT_OFFSET + 24;
@@ -29,6 +48,15 @@ pub const Z2_RANGECHECK_OFFSET: usize = Z2_REDUCE_OFFSET + REDUCTION_TOTAL;
 pub const TOTAL_COLUMNS_FP2_MULTIPLICATION: usize = Z2_RANGECHECK_OFFSET + RANGE_CHECK_TOTAL;
 
 // Fp2 * Fp multiplication layout offsets
+/*
+    These trace offsets are for multiplication of Fp2 with Fp. It needs 12 rows.
+    [x0, x1] * y = [x0y, x1y]
+    FP2_FP_MUL_SELECTOR_OFFSET -> Selector to ensure that the input is same across all rows. Set 1 in all rows except last one.
+    X0_Y_REDUCE_OFFSET -> Reduction operation for x0y.
+    X0_Y_RANGECHECK_OFFSET -> Range check for result of x0y reduction.
+    X1_Y_REDUCE_OFFSET -> Reduction operation for x1y.
+    X1_Y_RANGECHECK_OFFSET -> Range check for result of x1y reduction.
+*/
 pub const FP2_FP_MUL_SELECTOR_OFFSET: usize = 0;
 pub const FP2_FP_X_INPUT_OFFSET: usize = FP2_FP_MUL_SELECTOR_OFFSET + 1;
 pub const FP2_FP_Y_INPUT_OFFSET: usize = FP2_FP_X_INPUT_OFFSET + 24;
@@ -41,6 +69,15 @@ pub const X1_Y_RANGECHECK_OFFSET: usize = X1_Y_REDUCE_OFFSET + REDUCTION_TOTAL;
 pub const FP2_FP_TOTAL_COLUMNS: usize = X1_Y_RANGECHECK_OFFSET + RANGE_CHECK_TOTAL;
 
 // Multiply by B layout offsets
+/*
+    These trace offsets are for `multiply_by_b` function (super::native::Fp2::multiply_by_B). It needs 12 rows.
+    MULTIPLY_BY_B_SELECTOR_OFFSET -> Selector to ensure that the input is same across all rows. Set 1 in all rows except last one.
+    MULTIPLY_BY_B_ADD_MODSQ_OFFSET -> Addition operation to add x0*4 + p*p (required because we don't know if x0*4 - x1*4 will overflow).
+    MULTIPLY_BY_B_Z0_REDUCE_OFFSET -> Reduction operation for Z0 (z0 is the real part of the result).
+    MULTIPLY_BY_B_Z0_RANGECHECK_OFFSET -> Range check for result of Z0 reduction.
+    MULTIPLY_BY_B_Z1_REDUCE_OFFSET -> Reduction operation for Z1 (z1 is the imaginary part of the result).
+    MULTIPLY_BY_B_Z1_RANGECHECK_OFFSET -> Range check for result of Z1 reduction.
+*/
 pub const MULTIPLY_B_SELECTOR_OFFSET: usize = 0;
 pub const MULTIPLY_B_X_OFFSET: usize = MULTIPLY_B_SELECTOR_OFFSET + 1;
 pub const MULTIPLY_B_X0_B_MUL_OFFSET: usize = MULTIPLY_B_X_OFFSET + 24;
@@ -55,21 +92,39 @@ pub const MULTIPLY_B_Z1_RANGECHECK_OFFSET: usize = MULTIPLY_B_Z1_REDUCE_OFFSET +
 pub const MULTIPLY_B_TOTAL_COLUMS: usize = MULTIPLY_B_Z1_RANGECHECK_OFFSET + RANGE_CHECK_TOTAL;
 
 // Fp2 addition layout offsets
+/*
+    These trace offsets are for addition for two Fp2 elements. In essence it's two concatenated Fp additions. It needs 1 row.
+*/
 pub const FP2_ADDITION_0_OFFSET: usize = 0;
 pub const FP2_ADDITION_1_OFFSET: usize = FP2_ADDITION_0_OFFSET + FP_ADDITION_TOTAL;
 pub const FP2_ADDITION_TOTAL: usize = FP2_ADDITION_1_OFFSET + FP_ADDITION_TOTAL;
 
 // Fp2 subtraction layout offsets
+/*
+    These trace offsets are for subtraction for two Fp2 elements. In essence it's two concatenated Fp subtractions. It needs 1 row.
+*/
 pub const FP2_SUBTRACTION_0_OFFSET: usize = 0;
 pub const FP2_SUBTRACTION_1_OFFSET: usize = FP2_SUBTRACTION_0_OFFSET + FP_SUBTRACTION_TOTAL;
 pub const FP2_SUBTRACTION_TOTAL: usize = FP2_SUBTRACTION_1_OFFSET + FP_SUBTRACTION_TOTAL;
 
 // Fp2 multiply single
+/*
+    These trace offsets are for multiply by single for two Fp2 elements. In essence it's two concatenated Fp multiply by single. It needs 1 row.
+*/
 pub const FP2_MULTIPLY_SINGLE_0_OFFSET: usize = 0;
 pub const FP2_MULTIPLY_SINGLE_1_OFFSET: usize = FP2_MULTIPLY_SINGLE_0_OFFSET + FP_MULTIPLY_SINGLE_TOTAL;
 pub const FP2_MULTIPLY_SINGLE_TOTAL: usize = FP2_MULTIPLY_SINGLE_1_OFFSET + FP_MULTIPLY_SINGLE_TOTAL;
 
 // FP2 non residue multiplication
+/*
+    These trace offsets are for Fp2 non residue multiplication (super::native::Fp2::mul_by_nonresidue).  It needs 1 row.
+    FP2_NON_RESIDUE_MUL_CHECK_OFFSET -> Selector to indicate the operation is on.
+    FP2_NON_RESIDUE_MUL_C0_C1_SUB_OFFSET -> This offset is for two operations in one. First is addition with bls12-381 field prime, followed by subtraction.
+    FP2_NON_RESIDUE_MUL_Z0_REDUCE_OFFSET -> Reduction operation for Z0 (z0 is the real part of the result).
+    FP2_NON_RESIDUE_MUL_Z0_RANGECHECK_OFFSET -> Range check for result of Z0 reduction.
+    FP2_NON_RESIDUE_MUL_Z1_REDUCE_OFFSET -> Reduction operation for Z1 (z1 is the imaginary part of the result).
+    FP2_NON_RESIDUE_MUL_Z1_RANGECHECK_OFFSET -> Range check for result of Z1 reduction.
+*/
 pub const FP2_NON_RESIDUE_MUL_CHECK_OFFSET: usize = 0;
 pub const FP2_NON_RESIDUE_MUL_INPUT_OFFSET: usize = FP2_NON_RESIDUE_MUL_CHECK_OFFSET + 1;
 pub const FP2_NON_RESIDUE_MUL_C0_C1_SUB_OFFSET: usize = FP2_NON_RESIDUE_MUL_INPUT_OFFSET + 24;
@@ -81,6 +136,20 @@ pub const FP2_NON_RESIDUE_MUL_Z1_RANGECHECK_OFFSET: usize = FP2_NON_RESIDUE_MUL_
 pub const FP2_NON_RESIDUE_MUL_TOTAL: usize = FP2_NON_RESIDUE_MUL_Z1_RANGECHECK_OFFSET + RANGE_CHECK_TOTAL;
 
 // FP4 Sq
+/*
+    These trace offsets are for Fp4 square function (super::native::fp4_square). It needs 12 rows.
+    FP4_SQ_SELECTOR_OFFSET -> Selector to ensure that the input is same across all rows. Set 1 in all rows except last one.
+    T0 -> a*a
+    T1 -> b*b
+    T2 -> mul_by_nonresidue(T1)
+    X -> T2 + T0
+    T3 -> a+b
+    T4 -> T3*T3
+    T5 -> T4 - T0
+    Y -> T5 - T1 
+    FP4_SQ_X_CALC_OFFSET, FP4_SQ_T3_CALC_OFFSET -> offset including 3 operations (fp2 addition, reduction of both real and imaginary parts of the result, range check of both real and imaginary parts of the result).
+    FP4_SQ_T5_CALC_OFFSET, FP4_SQ_Y_CALC_OFFSET -> offset including 4 operations (fp2 addition (adding bls12-381 field prime to mitigate overflow), fp2 subtraction, reduction of both real and imaginary parts of the result, range check of both real and imaginary parts of the result).
+*/
 pub const FP4_SQ_SELECTOR_OFFSET: usize = 0;
 pub const FP4_SQ_INPUT_X_OFFSET: usize = FP4_SQ_SELECTOR_OFFSET + 1;
 pub const FP4_SQ_INPUT_Y_OFFSET: usize = FP4_SQ_INPUT_X_OFFSET + 24;
@@ -95,6 +164,16 @@ pub const FP4_SQ_Y_CALC_OFFSET: usize = FP4_SQ_T5_CALC_OFFSET + FP2_SUBTRACTION_
 pub const FP4_SQ_TOTAL_COLUMNS: usize = FP4_SQ_Y_CALC_OFFSET + FP2_SUBTRACTION_TOTAL + FP2_ADDITION_TOTAL + (FP_SINGLE_REDUCE_TOTAL + RANGE_CHECK_TOTAL)*2;
 
 // Forbenius map Fp2
+/*
+    These trace offsets are for fp2 forbenius map (super::native::Fp2::forbenius_map). It needs 12 rows.
+    FP2_FORBENIUS_MAP_SELECTOR_OFFSET -> Selector to ensure that the input is same across all rows. Set 1 in all rows except last one.
+    FP2_FORBENIUS_MAP_POW_OFFSET -> offset where power is set.
+    FP2_FORBENIUS_MAP_DIV_OFFSET -> offset of integer division power/2.
+    FP2_FORBENIUS_MAP_REM_OFFSET -> offset of power%2.
+    T0 -> x1 * forbenius_constant
+    FP2_FORBENIUS_MAP_T0_CALC_OFFSET -> offset including 3 operations (multiplication, reduction of the result, range check of the result).
+    FP2_FORBENIUS_MAP_MUL_RES_ROW -> Selector indicating which row contains result of the multiplication. Set 1 on the 11th row.
+*/
 pub const FP2_FORBENIUS_MAP_SELECTOR_OFFSET: usize = 0;
 pub const FP2_FORBENIUS_MAP_INPUT_OFFSET: usize = FP2_FORBENIUS_MAP_SELECTOR_OFFSET + 1;
 pub const FP2_FORBENIUS_MAP_POW_OFFSET: usize = FP2_FORBENIUS_MAP_INPUT_OFFSET + 24;
@@ -104,6 +183,7 @@ pub const FP2_FORBENIUS_MAP_T0_CALC_OFFSET: usize = FP2_FORBENIUS_MAP_REM_OFFSET
 pub const FP2_FORBENIUS_MAP_MUL_RES_ROW: usize = FP2_FORBENIUS_MAP_T0_CALC_OFFSET + FP_MULTIPLICATION_TOTAL_COLUMNS + REDUCTION_TOTAL + RANGE_CHECK_TOTAL;
 pub const FP2_FORBENIUS_MAP_TOTAL_COLUMNS: usize = FP2_FORBENIUS_MAP_MUL_RES_ROW + 1;
 
+/// Fills the stark trace of fp2 addition. Inputs are 12*2 limbs each. Needs 1 row.
 pub fn fill_trace_addition_fp2<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -118,6 +198,7 @@ pub fn fill_trace_addition_fp2<F: RichField + Extendable<D>,
     fill_trace_addition_fp(trace, &x[1], &y[1], row, start_col + FP2_ADDITION_1_OFFSET);
 }
 
+/// Fills the stark trace of fp2 subtraction. Inputs are 12*2 limbs each. Needs 1 row. Assume x > y.
 pub fn fill_trace_subtraction_fp2<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -132,6 +213,7 @@ pub fn fill_trace_subtraction_fp2<F: RichField + Extendable<D>,
     fill_trace_subtraction_fp(trace, &x[1], &y[1], row, start_col + FP2_SUBTRACTION_1_OFFSET);
 }
 
+/// Fills the stark trace of multiplication following long multiplication. Inputs are 12\*2 limbs and 1\*2 limbs respectively. Needs 1 row.
 pub fn fill_trace_multiply_single_fp2<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -146,6 +228,7 @@ pub fn fill_trace_multiply_single_fp2<F: RichField + Extendable<D>,
     fill_trace_multiply_single_fp(trace, &x[1], y[1], row, start_col + FP2_SUBTRACTION_1_OFFSET);
 }
 
+/// Fills the stark trace of negation. Input is 12*2 limbs. Needs 1 row. In essence, it fills an addition trace with inputs as `x` and `-x`.
 pub fn fill_trace_negate_fp2<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -159,6 +242,7 @@ pub fn fill_trace_negate_fp2<F: RichField + Extendable<D>,
     fill_trace_addition_fp2(trace, x, &minus_x, row, start_col);
 }
 
+/// Fills stark trace for fp2 multiplication. Inputs are 12*2 limbs each. Needs 12 rows. Sets addition and subtraction selectors to 1 only in 11th row, becuase that's where multiplication result is set.
 pub fn generate_trace_fp2_mul<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -234,6 +318,7 @@ pub fn generate_trace_fp2_mul<F: RichField + Extendable<D>,
     fill_range_check_trace(trace, &rem, start_row, start_col + Z2_RANGECHECK_OFFSET);
 }
 
+/// Fill trace of fp2 fp multiplication. Inputs are 12*2 limbs and 12 limbs respectively. Needs 12 rows.
 pub fn fill_trace_fp2_fp_mul<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -255,6 +340,7 @@ pub fn fill_trace_fp2_fp_mul<F: RichField + Extendable<D>,
     fill_range_check_trace(trace, &rem, start_row, start_col + X1_Y_RANGECHECK_OFFSET);
 }
 
+/// Fills trace of fp2 subtraction combined with reduction and range check. Inputs are 12*2 limbs each. Needs 1 row. Fills trace of adding field prime p to x first, and then the trace for subtraction with y.
 pub fn fill_trace_subtraction_with_reduction<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -280,6 +366,7 @@ pub fn fill_trace_subtraction_with_reduction<F: RichField + Extendable<D>,
     fill_range_check_trace(trace, &rem, row, start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL*2 + RANGE_CHECK_TOTAL);
 }
 
+/// Fills trace of [multiply_by_b](super::native::Fp2::multiply_by_B) function. Input is 12*2 limbs. Needs 12 rows. Sets addition and subtraction selectors to 1 only in 11th row, becuase that's where multiplication result is set.
 pub fn fill_multiply_by_b_trace<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -316,6 +403,7 @@ pub fn fill_multiply_by_b_trace<F: RichField + Extendable<D>,
     fill_range_check_trace(trace, &rem, start_row, start_col + MULTIPLY_B_Z1_RANGECHECK_OFFSET);
 }
 
+/// Fills trace of fp2 addition combined with reduction and range check. Inputs are 12*2 limbs each. Needs 1 row.
 pub fn fill_trace_addition_with_reduction<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -333,6 +421,7 @@ pub fn fill_trace_addition_with_reduction<F: RichField + Extendable<D>,
     fill_range_check_trace(trace, &rem, row, start_col + FP2_ADDITION_TOTAL + FP_SINGLE_REDUCE_TOTAL*2 + RANGE_CHECK_TOTAL);
 }
 
+/// Fills trace of [mul_by_nonresidue](super::native::Fp2::mul_by_nonresidue) function. Input is 12*2 limbs. Needs 1 row.
 pub fn fill_trace_non_residue_multiplication<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -357,6 +446,7 @@ pub fn fill_trace_non_residue_multiplication<F: RichField + Extendable<D>,
     fill_range_check_trace(trace, &rem, row, start_col + FP2_NON_RESIDUE_MUL_Z1_RANGECHECK_OFFSET);
 }
 
+/// Fills trace of [fp4_sqaure](super::native::fp4_square) function. Inputs are 12*2 limbs each. Needs 12 rows.
 pub fn fill_trace_fp4_sq<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -403,6 +493,7 @@ pub fn fill_trace_fp4_sq<F: RichField + Extendable<D>,
     }
 }
 
+/// Fills trace of [forbenius_map](super::native::Fp2::forbenius_map) function. Input is 12*2 limbs and usize. Needs 12 rows.
 pub fn fill_trace_fp2_forbenius_map<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
@@ -429,6 +520,7 @@ pub fn fill_trace_fp2_forbenius_map<F: RichField + Extendable<D>,
     assert_eq!(res, x.forbenius_map(pow));
 }
 
+/// Constraints fp2 addition. In essence, constraints two Fp addititons.
 pub fn add_addition_fp2_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -462,6 +554,7 @@ pub fn add_addition_fp2_constraints_ext_circuit<
     add_addition_fp_constraints_ext_circuit(builder, yield_constr, local_values,start_col + FP2_ADDITION_1_OFFSET, bit_selector);
 }
 
+/// Constraints fp2 subtraction. In essence, constraints two Fp subtractions.
 pub fn add_subtraction_fp2_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -495,6 +588,7 @@ pub fn add_subtraction_fp2_constraints_ext_circuit<
     add_subtraction_fp_constraints_ext_circuit(builder, yield_constr, local_values,start_col + FP2_SUBTRACTION_1_OFFSET, bit_selector);
 }
 
+/// Constraints fp2 multiply by single. In essence, constraints two Fp multiply by single.
 pub fn add_fp2_single_multiply_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -528,6 +622,7 @@ pub fn add_fp2_single_multiply_constraints_ext_circuit<
     add_fp_single_multiply_constraints_ext_circuit(builder, yield_constr, local_values,start_col + FP2_MULTIPLY_SINGLE_1_OFFSET, bit_selector);
 }
 
+/// Constraints fp2 negation. First add constraints for fp2 addition. Followed by constraining the result of the addition with bls12-381 field prime p.
 pub fn add_negate_fp2_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -596,6 +691,9 @@ pub fn add_negate_fp2_constraints_ext_circuit<
     }
 }   
 
+/// Constraints fp2 multiplication.
+///
+/// Constraints inputs across this and next row, wherever selector is set to on. Constraints x0\*y0, x1\*y1, x0\*y1, x1\*y0 multiplication operations. Then constraints the x0\*y0 + p^2 operation, followed by x0\*y0 + p^2 - x1\*y1 operation. Constraints the reduction of result of the previous subtraction, followed by a range check operation. Constraints x0\*y1 + x1\*y0. Constraints the reduction of result of the previous addition, followed by a range check operation.
 pub fn add_fp2_mul_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -985,6 +1083,9 @@ pub fn add_fp2_mul_constraints_ext_circuit<
 
 }
 
+/// Constraints fp2 fp multiplication. 
+///
+/// Constraints inputs across this and next row, wherever selector is set to on. Constraints x0\*y, x1\*y multiplication operations. Constraints the reduction of result of the previous multiplications, followed by a range check operations.
 pub fn add_fp2_fp_mul_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -1144,6 +1245,9 @@ pub fn add_fp2_fp_mul_constraints_ext_circuit<
     add_range_check_constraints_ext_circuit(builder, yield_constr, local_values, start_col + X1_Y_RANGECHECK_OFFSET, bit_selector);
 }
 
+/// Constraints for [multiply_by_b](super::native::Fp2::multiply_by_B) function.
+///
+///  Constraints inputs across this and next row, wherever selector is set to on. Constraints x0\*4, x1\*4 multiplications. Constraints y input of the multiplications to 4. Constraints respective addition and subtraction operations followed by reduction and range check constraints.
 pub fn add_multiply_by_b_constraints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -1391,6 +1495,7 @@ pub fn add_multiply_by_b_constraints_ext_circuit<
 
 }
 
+/// Constraints fp2 subtraction followed by reduction and range check constraints. First, constraints of adding field prime p to x to prevent overflow, because x > y assumption is not valid here. Then constraints the subtraction operation. Then reduce and range check constraints.
 pub fn add_subtraction_with_reduction_constranints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -1526,6 +1631,7 @@ pub fn add_subtraction_with_reduction_constraints_ext_circuit<
     add_range_check_constraints_ext_circuit(builder, yield_constr, local_values, start_col + FP2_ADDITION_TOTAL + FP2_SUBTRACTION_TOTAL + FP_SINGLE_REDUCE_TOTAL*2 + RANGE_CHECK_TOTAL, bit_selector);
 }
 
+/// Constraints fp2 addition followed by reduction and range check constraints.
 pub fn add_addition_with_reduction_constranints<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -1601,6 +1707,9 @@ pub fn add_addition_with_reduction_constraints_ext_circuit<
     add_range_check_constraints_ext_circuit(builder, yield_constr, local_values, start_col + FP2_ADDITION_TOTAL + FP_SINGLE_REDUCE_TOTAL*2 + RANGE_CHECK_TOTAL, bit_selector);
 }
 
+/// Constraints [mul_by_nonresidue](super::native::Fp2::mul_by_nonresidue) function.
+///
+/// For the real part, constraints addition with field prime first, and then constraints subtraction, followed by reduction and range check constraints. For imaginary part, constraints addition, followed by reduction and range check constraints.
 pub fn add_non_residue_multiplication_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -1758,6 +1867,9 @@ pub fn add_non_residue_multiplication_constraints_ext_circuit<
     add_range_check_constraints_ext_circuit(builder, yield_constr, local_values, start_col + FP2_NON_RESIDUE_MUL_Z1_RANGECHECK_OFFSET, bit_selector);
 }
 
+/// Constraints for [fp4_square](super::native::fp4_square) function.
+///
+///  Constraints inputs across this and next row, wherever selector is set to on. Constraints the respective multiplication, addition and subtraction operations.
 pub fn add_fp4_sq_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,
@@ -2153,6 +2265,9 @@ pub fn add_fp4_sq_constraints_ext_circuit<
     add_subtraction_with_reduction_constraints_ext_circuit(builder, yield_constr, local_values, start_col + FP4_SQ_Y_CALC_OFFSET, bit_selector);
 }
 
+/// Constraints for [forbenius_map](super::native::Fp2::forbenius_map) function.
+///
+///  Constraints both input and power across this and next row, wherever selector is set to on. Constraint the divisor and remainder with power for `power == divisor*2 + remainder`. Selects the forbenius constant using mupliplexer logic -> `y = (1-bit)*constant[0] + bit*constant[1]`. Then constraints multiplication, reduction and range check operations.
 pub fn add_fp2_forbenius_map_constraints<F: RichField + Extendable<D>,
     const D: usize,
     FE,

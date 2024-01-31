@@ -29,6 +29,28 @@ use crate::fp::*;
 use crate::fp2::*;
 use crate::utils::*;
 
+/*
+    These trace offsets are for the calc_pairing_precomp function (super::native::calc_pairing_precomp). It takes 12*68 rows. The offsets are defined such that each 0 bit of the bls12-381 parameter takes 12 rows (one operation) and each 1 bit takes 12*2 rows (two operations). The MSB of bls12-381 parameter is not used.
+    Z_MULT_Z_INV_OFFSET -> offset for multiplication z(input) and z_inv. Required to verify that z*z_inv = 1.
+    X_MULT_Z_INV_OFFSET -> offset for multiplication of x(input) and z_inv.
+    Y_MULT_Z_INV_OFFSET -> offset for multiplication of y(input) and z_inv.
+    QX_OFFSET -> offset where Qx is set (defined in native function definition).
+    QY_OFFSET -> offset where Qy is set (defined in native function definition).
+    QZ_OFFSET -> offset where Qz is set (defined in native function definition).
+    FIRST_ROW_SELECTOR_OFFSET -> selector which is 1 for the starting row for each operation. Hence, every 12th row, it is set 1.
+    FIRST_LOOP_SELECTOR_OFFSET -> selector which is set 1 when the trace is for the first computation inside the loop.
+    BIT1_SELECTOR_OFFSET -> selector which is 1 for each 1 bit of bls12-381 parameter. It is set 1 for 12 rows continous rows.
+    RX_OFFSET -> offset where Rx is set (defined in native function definition), updates after each loop of computation.
+    RY_OFFSET -> offset where Ry is set (defined in native function definition), updates after each loop of computation.
+    RZ_OFFSET -> offset where Rz is set (defined in native function definition), updates after each loop of computation.
+    ELL_COEFFS_IDX_OFFSET -> offset which stores which index of the `ell_coeffs` array the trace is currently on. Total 68 selectors, one for each possible index of ell_coeffs.
+    ---
+    BIT0 OFFSETS -> offsets for computing `ell_coeffs` for 0 bit of bls12-381 parameter. Ti's and Xi's are the same as defined in the function definition.
+    BIT1 OFFSETS -> offsets for computing `ell_coeffs` for 1 bit of bls12-381 parameter. Ti's and Xi's are the same as defined in the function definition.
+
+    BIT0 and BIT1 offsets start on the same value because both the operations are never done in the same rows. In a single row, either bit 0 operations are being done, or bit 1 operations are being done.
+*/
+
 pub const Z_MULT_Z_INV_OFFSET: usize = 0;
 pub const X_MULT_Z_INV_OFFSET: usize = Z_MULT_Z_INV_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
 pub const Y_MULT_Z_INV_OFFSET: usize = X_MULT_Z_INV_OFFSET + TOTAL_COLUMNS_FP2_MULTIPLICATION;
@@ -101,6 +123,10 @@ pub const TOTAL_COLUMNS: usize = BIT1_TOTAL_COLUMNS;
 pub const COLUMNS: usize = TOTAL_COLUMNS;
 pub const PUBLIC_INPUTS: usize = 72 + 68*24*3;
 
+/*
+    The public inputs for this stark are the x, y and z inputs to the calc_pairing_precomp function followed by the output ell_coeffs array.
+*/
+
 pub const X0_PUBLIC_INPUTS_OFFSET: usize = 0;
 pub const X1_PUBLIC_INPUTS_OFFSET: usize = 12;
 pub const Y0_PUBLIC_INPUTS_OFFSET: usize = 24;
@@ -125,13 +151,8 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
         }
     }
 
+    /// Fills the trace of [calc_pairing_precomp](super::native::calc_pairing_precomp) function. Inputs are three 12\*2 limbs. The trace first has a multiplication of z and z_inv to verify the correctness of the inverse. Followed by operations of x\*z_inv and y\*z_inv. The values of Qx, Qy and Qz are filled across all rows in the trace. `FIRST_LOOP_SELECTOR` is set 1 for the first loop computation. Sets Rx, Ry and Rz values for the current loop, and the `ELL_COEFFS_IDX` for the corresponding index. Sets `FIRST_ROW_SELECTOR` to 1 for starting row of the operation. For each bit 0 of bls12-381 parameter, fills the trace for bit 0 computation. For each bit 1 of the bls12-381 parameter, fills trace for bit 0 computation in 12 rows, then fills the trace for bit 1 computation in the next 12 rows and also sets `BIT1_SELECTOR` to 1 for these rows.
     pub fn generate_trace(&self, x: [[u32; 12]; 2], y: [[u32; 12]; 2], z:[[u32; 12]; 2]) -> Vec<[F; TOTAL_COLUMNS]> {
-        /* 
-            TODOS:
-            1. Calculate z_inv -> constrain z*z_inv == 1 - done
-            2. Qx, Qy, Qz rows fill start to end (assert eq all rows)
-            3. Rx, Ry, Rz (assert first row)
-        */
         let mut trace = vec![[F::ZERO; TOTAL_COLUMNS]; self.num_rows];
         let z_fp2  = Fp2([Fp(z[0]), Fp(z[1])]);
         let z_inv = z_fp2.invert();
@@ -332,6 +353,23 @@ impl<F: RichField + Extendable<D>, const D: usize> PairingPrecompStark<F, D> {
     }
 
 }
+
+/*
+    The constraints of this stark are as follows:
+    * Constraint the result of z*z_inv multiplication to be 1.
+    * Constraint the x input of z*z_inv multiplication to public input z.
+    * Constraint the x input of x*z_inv multiplication to public input x, and y input of x*z_inv to the y input of z*z_inv.
+    * Constraint the x input of y*z_inv multiplication to public input y, and y input of y*z_inv to the y input of z*z_inv.
+    * Constraint the result of x*z_inv multiplication to Qx, and constraint Qx to be same in all rows.
+    * Constraint the result of y*z_inv multiplication to Qy, and constraint Qy to be same in all rows.
+    * Constraint Qz to be 1, and constraint Qz to be same in all rows.
+    * Creates two `bit_selector` values from `BIT1_SELECTOR`, `bit0` and `bit1`.
+    * For `FIRST_LOOP_SELECTOR` set 1, constraints Rx, Ry, and Rz to Qx, Qy, and Qz.
+    * For `FIRST_ROW_SELECTOR` set 1 in the next row, constraints Rx, Ry and Rz values of the next row with current row bit 0 operaion new_Rx, new_Ry, and new_Rz and `bit0` selector, as well as current row bit 1 operation new_Rx, new_Ry, and new_Rz and `bit1` selector.
+    * Constraints public inputs with `ELL_COEFFS_IDX` selector and the result of bit 0 operation results and `bit0` selector, as well as the result of bit 1 operation results and `bit1` selector.
+    * Constraints all operations for bit 0 computation with `bit0` selector, i.e., those constraints are only on when `BIT1_SELECTOR` is off.
+    * Constraints all operations for bit 1 computation with `bit1` selector, i.e., those constraints are only on when `BIT1_SELECTOR` is on.
+*/
 
 // Implement constraint generator
 impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for PairingPrecompStark<F, D> {
