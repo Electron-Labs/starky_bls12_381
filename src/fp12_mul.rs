@@ -1,17 +1,10 @@
-use std::{str::FromStr, cmp::min};
-
-use itertools::Itertools;
-use num_bigint::{BigUint, ToBigUint};
 use plonky2::{
     field::{
         extension::{Extendable, FieldExtension},
         packed::PackedField,
-        polynomial::PolynomialValues,
-        types::Field,
     },
     hash::hash_types::RichField,
     iop::ext_target::ExtensionTarget,
-    util::transpose,
 };
 use starky::{
     constraint_consumer::ConstraintConsumer,
@@ -19,19 +12,11 @@ use starky::{
     stark::Stark,
 };
 
-use crate::native::{
-    add_u32_slices, add_u32_slices_12, get_bits_as_array, get_div_rem_modulus_from_biguint_12,
-    get_selector_bits_from_u32, get_u32_vec_from_literal, get_u32_vec_from_literal_24, modulus,
-    multiply_by_slice, sub_u32_slices, Fp, Fp2, calc_qs, calc_precomp_stuff_loop0, sub_u32_slices_12,
-    mul_u32_slice_u32, mod_inverse, get_bls_12_381_parameter, calc_precomp_stuff_loop1, Fp6, Fp12,
-    mul_by_nonresidue, fp4_square,
-};
+use crate::native::Fp12;
 
 use crate::fp::*;
-use crate::fp2::*;
 use crate::fp6::*;
 use crate::fp12::*;
-use crate::utils::*;
 
 pub const TOTAL_COLUMNS: usize = FP12_MUL_TOTAL_COLUMNS;
 pub const COLUMNS: usize = TOTAL_COLUMNS;

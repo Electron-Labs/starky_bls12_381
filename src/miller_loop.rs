@@ -1,17 +1,14 @@
-use std::{str::FromStr, cmp::min};
+use std::cmp::min;
 
-use itertools::Itertools;
-use num_bigint::{BigUint, ToBigUint};
 use plonky2::{
     field::{
         extension::{Extendable, FieldExtension},
         packed::PackedField,
-        polynomial::PolynomialValues,
         types::Field,
     },
     hash::hash_types::RichField,
     iop::ext_target::ExtensionTarget,
-    util::transpose, plonk::circuit_builder::CircuitBuilder,
+    plonk::circuit_builder::CircuitBuilder,
 };
 use starky::{
     constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer},
@@ -20,9 +17,7 @@ use starky::{
 };
 
 use crate::native::{
-    add_u32_slices, add_u32_slices_12, get_bits_as_array, get_div_rem_modulus_from_biguint_12,
-    get_selector_bits_from_u32, get_u32_vec_from_literal, get_u32_vec_from_literal_24, modulus,
-    multiply_by_slice, sub_u32_slices, Fp, Fp2, calc_qs, calc_precomp_stuff_loop0, sub_u32_slices_12, mul_u32_slice_u32, mod_inverse, get_bls_12_381_parameter, calc_precomp_stuff_loop1, Fp6, Fp12, mul_by_nonresidue,
+    Fp, Fp2, get_bls_12_381_parameter, Fp6, Fp12,
 };
 
 use crate::fp::*;
@@ -123,14 +118,13 @@ pub fn fill_trace_miller_loop<F: RichField + Extendable<D>,
         if j != 0 {
             trace[s_row][start_col + FIRST_ROW_SELECTOR_OFFSET] = F::ONE;
         }
-        #[allow(non_snake_case)]
-        let E = ell_coeffs[j];
-        fill_trace_fp2_fp_mul(trace, &E[1].get_u32_slice(), &x.0, s_row, e_row, start_col + O1_CALC_OFFSET);
-        let o1 = E[1]*(*x);
-        fill_trace_fp2_fp_mul(trace, &E[2].get_u32_slice(), &y.0, s_row, e_row, start_col + O4_CALC_OFFSET);
-        let o4 = E[2]*(*y);
-        fill_trace_multiply_by_014(trace, &f12, &E[0], &o1, &o4, s_row, e_row, start_col + F12_MUL_BY_014_OFFSET);
-        f12 = f12.multiplyBy014(E[0], o1, o4);
+        let e = ell_coeffs[j];
+        fill_trace_fp2_fp_mul(trace, &e[1].get_u32_slice(), &x.0, s_row, e_row, start_col + O1_CALC_OFFSET);
+        let o1 = e[1]*(*x);
+        fill_trace_fp2_fp_mul(trace, &e[2].get_u32_slice(), &y.0, s_row, e_row, start_col + O4_CALC_OFFSET);
+        let o4 = e[2]*(*y);
+        fill_trace_multiply_by_014(trace, &f12, &e[0], &o1, &o4, s_row, e_row, start_col + F12_MUL_BY_014_OFFSET);
+        f12 = f12.multiply_by_014(e[0], o1, o4);
         fill_trace_fp12_multiplication(trace, &f12, &f12, s_row, e_row, start_col + F12_SQ_CALC_OFFSET);
         let f12_sq = f12*f12;
         if get_bls_12_381_parameter().bit(i) && !bitone {

@@ -1,17 +1,11 @@
-use std::{str::FromStr, cmp::min};
-
-use itertools::Itertools;
-use num_bigint::{BigUint, ToBigUint};
 use plonky2::{
     field::{
         extension::{Extendable, FieldExtension},
         packed::PackedField,
-        polynomial::PolynomialValues,
         types::Field,
     },
     hash::hash_types::RichField,
     iop::ext_target::ExtensionTarget,
-    util::transpose,
 };
 use starky::{
     constraint_consumer::ConstraintConsumer,
@@ -19,13 +13,7 @@ use starky::{
     stark::Stark,
 };
 
-use crate::native::{
-    add_u32_slices, add_u32_slices_12, get_bits_as_array, get_div_rem_modulus_from_biguint_12,
-    get_selector_bits_from_u32, get_u32_vec_from_literal, get_u32_vec_from_literal_24, modulus,
-    multiply_by_slice, sub_u32_slices, Fp, Fp2, calc_qs, calc_precomp_stuff_loop0, sub_u32_slices_12,
-    mul_u32_slice_u32, mod_inverse, get_bls_12_381_parameter, calc_precomp_stuff_loop1, Fp6, Fp12,
-    mul_by_nonresidue, fp4_square,
-};
+use crate::native::Fp12;
 
 use crate::fp::*;
 use crate::fp2::*;
@@ -198,7 +186,7 @@ pub fn fill_trace_cyc_exp<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
 >(trace: &mut Vec<[F; C]>, x: &Fp12, start_row: usize, end_row: usize, output_col: usize) -> Fp12 {
-    let res = x.cyclotocmicExponent();
+    let res = x.cyclotocmic_exponent();
     for row in start_row..end_row+1 {
         trace[row][FINAL_EXP_CYCLOTOMIC_EXP_SELECTOR] = F::ONE;
     }
@@ -228,7 +216,7 @@ pub fn fill_trace_cyc_sq<F: RichField + Extendable<D>,
     const D: usize,
     const C: usize,
 >(trace: &mut Vec<[F; C]>, x: &Fp12, start_row: usize, end_row: usize, output_col: usize) -> Fp12 {
-    let res = x.cyclotomicSquare();
+    let res = x.cyclotomic_square();
     for row in start_row..end_row+1 {
         trace[row][FINAL_EXP_CYCLOTOMIC_SQ_SELECTOR] = F::ONE;
     }
@@ -286,20 +274,9 @@ impl<F: RichField + Extendable<D>, const D: usize> FinalExponentiateStark<F, D> 
         let t28 = fill_trace_mul(&mut trace, &t27, &t3, T28_ROW, T29_ROW-1, FINAL_EXP_T28_OFFSET);
         let t29 = fill_trace_mul(&mut trace, &t20, &t22, T29_ROW, T30_ROW-1, FINAL_EXP_T29_OFFSET);
         let t30 = fill_trace_mul(&mut trace, &t29, &t25, T30_ROW, T31_ROW-1, FINAL_EXP_T30_OFFSET);
-        let t31 = fill_trace_mul(&mut trace, &t30, &t28, T31_ROW, TOTAL_ROW-1, FINAL_EXP_T31_OFFSET);
+        let _t31 = fill_trace_mul(&mut trace, &t30, &t28, T31_ROW, TOTAL_ROW-1, FINAL_EXP_T31_OFFSET);
         trace
     }
-}
-
-pub fn trace_rows_to_poly_values<F: Field>(
-    trace_rows: Vec<[F; TOTAL_COLUMNS]>,
-) -> Vec<PolynomialValues<F>> {
-    let trace_row_vecs = trace_rows.into_iter().map(|row| row.to_vec()).collect_vec();
-    let trace_col_vecs: Vec<Vec<F>> = transpose(&trace_row_vecs);
-    trace_col_vecs
-        .into_iter()
-        .map(|column| PolynomialValues::new(column))
-        .collect()
 }
 
 /// Constraints `FINAL_EXP_FORBENIUS_MAP_SELECTOR` to be 1 and other op selectors to be 0 in the `FP12_FORBENIUS_MAP_ROWS` starting from `row`. Constraints the values in input columns to input of forbenius_map operation trace. Constraints the output of forbenius_map trace to the values set in output columns.
@@ -310,7 +287,6 @@ fn add_constraints_forbenius<F: RichField + Extendable<D>,
     const D2: usize
 >(
     local_values: &[P],
-    next_values: &[P],
     yield_constr: &mut ConstraintConsumer<P>,
     row: usize,
     input_col: usize,
@@ -395,7 +371,6 @@ pub fn add_constraints_forbenius_ext_circuit<F: RichField + Extendable<D>,
     builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
     yield_constr: &mut starky::constraint_consumer::RecursiveConstraintConsumer<F, D>,
     local_values: &[ExtensionTarget<D>],
-    next_values: &[ExtensionTarget<D>],
     row: usize,
     input_col: usize,
     output_col: usize,
@@ -472,7 +447,6 @@ fn add_constraints_mul<F: RichField + Extendable<D>,
     const D2: usize
 >(
     local_values: &[P],
-    next_values: &[P],
     yield_constr: &mut ConstraintConsumer<P>,
     row: usize,
     x_col: usize,
@@ -541,7 +515,6 @@ pub fn add_constraints_mul_ext_circuit<F: RichField + Extendable<D>,
     builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
     yield_constr: &mut starky::constraint_consumer::RecursiveConstraintConsumer<F, D>,
     local_values: &[ExtensionTarget<D>],
-    next_values: &[ExtensionTarget<D>],
     row: usize,
     x_col: usize,
     y_col: usize,
@@ -600,7 +573,6 @@ fn add_constraints_cyc_exp<F: RichField + Extendable<D>,
     const D2: usize
 >(
     local_values: &[P],
-    next_values: &[P],
     yield_constr: &mut ConstraintConsumer<P>,
     row: usize,
     input_col: usize,
@@ -654,7 +626,6 @@ pub fn add_constraints_cyc_exp_ext_circuit<F: RichField + Extendable<D>,
     builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
     yield_constr: &mut starky::constraint_consumer::RecursiveConstraintConsumer<F, D>,
     local_values: &[ExtensionTarget<D>],
-    next_values: &[ExtensionTarget<D>],
     row: usize,
     input_col: usize,
     output_col: usize,
@@ -699,7 +670,6 @@ pub fn add_constraints_conjugate<F: RichField + Extendable<D>,
     const D2: usize
 >(
     local_values: &[P],
-    next_values: &[P],
     yield_constr: &mut ConstraintConsumer<P>,
     row: usize,
     input_col: usize,
@@ -750,7 +720,6 @@ pub fn add_constraints_conjugate_ext_circuit<F: RichField + Extendable<D>,
     builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
     yield_constr: &mut starky::constraint_consumer::RecursiveConstraintConsumer<F, D>,
     local_values: &[ExtensionTarget<D>],
-    next_values: &[ExtensionTarget<D>],
     row: usize,
     input_col: usize,
     output_col: usize,
@@ -793,7 +762,6 @@ pub fn add_constraints_cyc_sq<F: RichField + Extendable<D>,
     const D2: usize
 >(
     local_values: &[P],
-    next_values: &[P],
     yield_constr: &mut ConstraintConsumer<P>,
     row: usize,
     input_col: usize,
@@ -864,7 +832,6 @@ pub fn add_constraints_cyc_sq_ext_circuit<F: RichField + Extendable<D>,
     builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
     yield_constr: &mut starky::constraint_consumer::RecursiveConstraintConsumer<F, D>,
     local_values: &[ExtensionTarget<D>],
-    next_values: &[ExtensionTarget<D>],
     row: usize,
     input_col: usize,
     output_col: usize,
@@ -1066,100 +1033,100 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for FinalExponent
         }
 
         // T0
-        add_constraints_forbenius(local_values, next_values, yield_constr, T0_ROW, FINAL_EXP_INPUT_OFFSET, FINAL_EXP_T0_OFFSET, 6);
+        add_constraints_forbenius(local_values, yield_constr, T0_ROW, FINAL_EXP_INPUT_OFFSET, FINAL_EXP_T0_OFFSET, 6);
 
         // T1
-        add_constraints_mul(local_values, next_values, yield_constr, T1_ROW, FINAL_EXP_T1_OFFSET, FINAL_EXP_INPUT_OFFSET, FINAL_EXP_T0_OFFSET);
+        add_constraints_mul(local_values, yield_constr, T1_ROW, FINAL_EXP_T1_OFFSET, FINAL_EXP_INPUT_OFFSET, FINAL_EXP_T0_OFFSET);
 
         // T2
-        add_constraints_forbenius(local_values, next_values, yield_constr, T2_ROW, FINAL_EXP_T1_OFFSET, FINAL_EXP_T2_OFFSET, 2);
+        add_constraints_forbenius(local_values, yield_constr, T2_ROW, FINAL_EXP_T1_OFFSET, FINAL_EXP_T2_OFFSET, 2);
 
         // T3
-        add_constraints_mul(local_values, next_values, yield_constr, T3_ROW, FINAL_EXP_T2_OFFSET, FINAL_EXP_T1_OFFSET, FINAL_EXP_T3_OFFSET);
+        add_constraints_mul(local_values, yield_constr, T3_ROW, FINAL_EXP_T2_OFFSET, FINAL_EXP_T1_OFFSET, FINAL_EXP_T3_OFFSET);
 
         // T4
-        add_constraints_cyc_exp(local_values, next_values, yield_constr, T4_ROW, FINAL_EXP_T3_OFFSET, FINAL_EXP_T4_OFFSET);
+        add_constraints_cyc_exp(local_values, yield_constr, T4_ROW, FINAL_EXP_T3_OFFSET, FINAL_EXP_T4_OFFSET);
 
         // T5
-        add_constraints_conjugate(local_values, next_values, yield_constr, T5_ROW, FINAL_EXP_T4_OFFSET, FINAL_EXP_T5_OFFSET);
+        add_constraints_conjugate(local_values, yield_constr, T5_ROW, FINAL_EXP_T4_OFFSET, FINAL_EXP_T5_OFFSET);
 
         // T6
-        add_constraints_cyc_sq(local_values, next_values, yield_constr, T6_ROW, FINAL_EXP_T3_OFFSET, FINAL_EXP_T6_OFFSET);
+        add_constraints_cyc_sq(local_values, yield_constr, T6_ROW, FINAL_EXP_T3_OFFSET, FINAL_EXP_T6_OFFSET);
 
         // T7
-        add_constraints_conjugate(local_values, next_values, yield_constr, T7_ROW, FINAL_EXP_T6_OFFSET, FINAL_EXP_T7_OFFSET);
+        add_constraints_conjugate(local_values, yield_constr, T7_ROW, FINAL_EXP_T6_OFFSET, FINAL_EXP_T7_OFFSET);
 
         // T8
-        add_constraints_mul(local_values, next_values, yield_constr, T8_ROW, FINAL_EXP_T7_OFFSET, FINAL_EXP_T5_OFFSET, FINAL_EXP_T8_OFFSET);
+        add_constraints_mul(local_values, yield_constr, T8_ROW, FINAL_EXP_T7_OFFSET, FINAL_EXP_T5_OFFSET, FINAL_EXP_T8_OFFSET);
 
         // T9
-        add_constraints_cyc_exp(local_values, next_values, yield_constr, T9_ROW, FINAL_EXP_T8_OFFSET, FINAL_EXP_T9_OFFSET);
+        add_constraints_cyc_exp(local_values, yield_constr, T9_ROW, FINAL_EXP_T8_OFFSET, FINAL_EXP_T9_OFFSET);
 
         // T10
-        add_constraints_conjugate(local_values, next_values, yield_constr, T10_ROW, FINAL_EXP_T9_OFFSET, FINAL_EXP_T10_OFFSET);
+        add_constraints_conjugate(local_values, yield_constr, T10_ROW, FINAL_EXP_T9_OFFSET, FINAL_EXP_T10_OFFSET);
 
         // T11
-        add_constraints_cyc_exp(local_values, next_values, yield_constr, T11_ROW, FINAL_EXP_T10_OFFSET, FINAL_EXP_T11_OFFSET);
+        add_constraints_cyc_exp(local_values, yield_constr, T11_ROW, FINAL_EXP_T10_OFFSET, FINAL_EXP_T11_OFFSET);
 
         // T12
-        add_constraints_conjugate(local_values, next_values, yield_constr, T12_ROW, FINAL_EXP_T11_OFFSET, FINAL_EXP_T12_OFFSET);
+        add_constraints_conjugate(local_values, yield_constr, T12_ROW, FINAL_EXP_T11_OFFSET, FINAL_EXP_T12_OFFSET);
 
         // T13
-        add_constraints_cyc_exp(local_values, next_values, yield_constr, T13_ROW, FINAL_EXP_T12_OFFSET, FINAL_EXP_T13_OFFSET);
+        add_constraints_cyc_exp(local_values, yield_constr, T13_ROW, FINAL_EXP_T12_OFFSET, FINAL_EXP_T13_OFFSET);
 
         // T14
-        add_constraints_conjugate(local_values, next_values, yield_constr, T14_ROW, FINAL_EXP_T13_OFFSET, FINAL_EXP_T14_OFFSET);
+        add_constraints_conjugate(local_values, yield_constr, T14_ROW, FINAL_EXP_T13_OFFSET, FINAL_EXP_T14_OFFSET);
 
         // T15
-        add_constraints_cyc_sq(local_values, next_values, yield_constr, T15_ROW, FINAL_EXP_T5_OFFSET, FINAL_EXP_T15_OFFSET);
+        add_constraints_cyc_sq(local_values, yield_constr, T15_ROW, FINAL_EXP_T5_OFFSET, FINAL_EXP_T15_OFFSET);
 
         // T16
-        add_constraints_mul(local_values, next_values, yield_constr, T16_ROW, FINAL_EXP_T14_OFFSET, FINAL_EXP_T15_OFFSET, FINAL_EXP_T16_OFFSET);
+        add_constraints_mul(local_values, yield_constr, T16_ROW, FINAL_EXP_T14_OFFSET, FINAL_EXP_T15_OFFSET, FINAL_EXP_T16_OFFSET);
 
         // T17
-        add_constraints_cyc_exp(local_values, next_values, yield_constr, T17_ROW, FINAL_EXP_T16_OFFSET, FINAL_EXP_T17_OFFSET);
+        add_constraints_cyc_exp(local_values, yield_constr, T17_ROW, FINAL_EXP_T16_OFFSET, FINAL_EXP_T17_OFFSET);
 
         // T18
-        add_constraints_conjugate(local_values, next_values, yield_constr, T18_ROW, FINAL_EXP_T17_OFFSET, FINAL_EXP_T18_OFFSET);
+        add_constraints_conjugate(local_values, yield_constr, T18_ROW, FINAL_EXP_T17_OFFSET, FINAL_EXP_T18_OFFSET);
 
         // T19
-        add_constraints_mul(local_values, next_values, yield_constr, T19_ROW, FINAL_EXP_T5_OFFSET, FINAL_EXP_T12_OFFSET, FINAL_EXP_T19_OFFSET);
+        add_constraints_mul(local_values, yield_constr, T19_ROW, FINAL_EXP_T5_OFFSET, FINAL_EXP_T12_OFFSET, FINAL_EXP_T19_OFFSET);
 
         // T20
-        add_constraints_forbenius(local_values, next_values, yield_constr, T20_ROW, FINAL_EXP_T19_OFFSET, FINAL_EXP_T20_OFFSET, 2);
+        add_constraints_forbenius(local_values, yield_constr, T20_ROW, FINAL_EXP_T19_OFFSET, FINAL_EXP_T20_OFFSET, 2);
 
         // T21
-        add_constraints_mul(local_values, next_values, yield_constr, T21_ROW, FINAL_EXP_T10_OFFSET, FINAL_EXP_T3_OFFSET, FINAL_EXP_T21_OFFSET);
+        add_constraints_mul(local_values, yield_constr, T21_ROW, FINAL_EXP_T10_OFFSET, FINAL_EXP_T3_OFFSET, FINAL_EXP_T21_OFFSET);
 
         // T22
-        add_constraints_forbenius(local_values, next_values, yield_constr, T22_ROW, FINAL_EXP_T21_OFFSET, FINAL_EXP_T22_OFFSET, 3);
+        add_constraints_forbenius(local_values, yield_constr, T22_ROW, FINAL_EXP_T21_OFFSET, FINAL_EXP_T22_OFFSET, 3);
 
         // T23
-        add_constraints_conjugate(local_values, next_values, yield_constr, T23_ROW, FINAL_EXP_T3_OFFSET, FINAL_EXP_T23_OFFSET);
+        add_constraints_conjugate(local_values, yield_constr, T23_ROW, FINAL_EXP_T3_OFFSET, FINAL_EXP_T23_OFFSET);
 
         // T24
-        add_constraints_mul(local_values, next_values, yield_constr, T24_ROW, FINAL_EXP_T16_OFFSET, FINAL_EXP_T23_OFFSET, FINAL_EXP_T24_OFFSET);
+        add_constraints_mul(local_values, yield_constr, T24_ROW, FINAL_EXP_T16_OFFSET, FINAL_EXP_T23_OFFSET, FINAL_EXP_T24_OFFSET);
 
         // T25
-        add_constraints_forbenius(local_values, next_values, yield_constr, T25_ROW, FINAL_EXP_T24_OFFSET, FINAL_EXP_T25_OFFSET, 1);
+        add_constraints_forbenius(local_values, yield_constr, T25_ROW, FINAL_EXP_T24_OFFSET, FINAL_EXP_T25_OFFSET, 1);
 
         // T26
-        add_constraints_conjugate(local_values, next_values, yield_constr, T26_ROW, FINAL_EXP_T8_OFFSET, FINAL_EXP_T26_OFFSET);
+        add_constraints_conjugate(local_values, yield_constr, T26_ROW, FINAL_EXP_T8_OFFSET, FINAL_EXP_T26_OFFSET);
 
         // T27
-        add_constraints_mul(local_values, next_values, yield_constr, T27_ROW, FINAL_EXP_T18_OFFSET, FINAL_EXP_T26_OFFSET, FINAL_EXP_T27_OFFSET);
+        add_constraints_mul(local_values, yield_constr, T27_ROW, FINAL_EXP_T18_OFFSET, FINAL_EXP_T26_OFFSET, FINAL_EXP_T27_OFFSET);
 
         // T28
-        add_constraints_mul(local_values, next_values, yield_constr, T28_ROW, FINAL_EXP_T27_OFFSET, FINAL_EXP_T3_OFFSET, FINAL_EXP_T28_OFFSET);
+        add_constraints_mul(local_values, yield_constr, T28_ROW, FINAL_EXP_T27_OFFSET, FINAL_EXP_T3_OFFSET, FINAL_EXP_T28_OFFSET);
 
         // T29
-        add_constraints_mul(local_values, next_values, yield_constr, T29_ROW, FINAL_EXP_T20_OFFSET, FINAL_EXP_T22_OFFSET, FINAL_EXP_T29_OFFSET);
+        add_constraints_mul(local_values, yield_constr, T29_ROW, FINAL_EXP_T20_OFFSET, FINAL_EXP_T22_OFFSET, FINAL_EXP_T29_OFFSET);
 
         // T30
-        add_constraints_mul(local_values, next_values, yield_constr, T30_ROW, FINAL_EXP_T29_OFFSET, FINAL_EXP_T25_OFFSET, FINAL_EXP_T30_OFFSET);
+        add_constraints_mul(local_values, yield_constr, T30_ROW, FINAL_EXP_T29_OFFSET, FINAL_EXP_T25_OFFSET, FINAL_EXP_T30_OFFSET);
 
         // T31
-        add_constraints_mul(local_values, next_values, yield_constr, T31_ROW, FINAL_EXP_T30_OFFSET, FINAL_EXP_T28_OFFSET, FINAL_EXP_T31_OFFSET);
+        add_constraints_mul(local_values, yield_constr, T31_ROW, FINAL_EXP_T30_OFFSET, FINAL_EXP_T28_OFFSET, FINAL_EXP_T31_OFFSET);
 
         add_fp12_forbenius_map_constraints(local_values, next_values, yield_constr, FINAL_EXP_OP_OFFSET, Some(local_values[FINAL_EXP_FORBENIUS_MAP_SELECTOR]));
         add_fp12_multiplication_constraints(local_values, next_values, yield_constr, FINAL_EXP_OP_OFFSET, Some(local_values[FINAL_EXP_MUL_SELECTOR]));
@@ -1290,100 +1257,100 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for FinalExponent
         }
 
         // T0
-        add_constraints_forbenius_ext_circuit(builder, yield_constr, local_values, next_values, T0_ROW, FINAL_EXP_INPUT_OFFSET, FINAL_EXP_T0_OFFSET, 6);
+        add_constraints_forbenius_ext_circuit(builder, yield_constr, local_values, T0_ROW, FINAL_EXP_INPUT_OFFSET, FINAL_EXP_T0_OFFSET, 6);
 
         // T1
-        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T1_ROW, FINAL_EXP_T1_OFFSET, FINAL_EXP_INPUT_OFFSET, FINAL_EXP_T0_OFFSET);
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, T1_ROW, FINAL_EXP_T1_OFFSET, FINAL_EXP_INPUT_OFFSET, FINAL_EXP_T0_OFFSET);
 
         // T2
-        add_constraints_forbenius_ext_circuit(builder, yield_constr, local_values, next_values, T2_ROW, FINAL_EXP_T1_OFFSET, FINAL_EXP_T2_OFFSET, 2);
+        add_constraints_forbenius_ext_circuit(builder, yield_constr, local_values, T2_ROW, FINAL_EXP_T1_OFFSET, FINAL_EXP_T2_OFFSET, 2);
 
         // T3
-        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T3_ROW, FINAL_EXP_T2_OFFSET, FINAL_EXP_T1_OFFSET, FINAL_EXP_T3_OFFSET);
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, T3_ROW, FINAL_EXP_T2_OFFSET, FINAL_EXP_T1_OFFSET, FINAL_EXP_T3_OFFSET);
 
         // T4
-        add_constraints_cyc_exp_ext_circuit(builder, yield_constr, local_values, next_values, T4_ROW, FINAL_EXP_T3_OFFSET, FINAL_EXP_T4_OFFSET);
+        add_constraints_cyc_exp_ext_circuit(builder, yield_constr, local_values, T4_ROW, FINAL_EXP_T3_OFFSET, FINAL_EXP_T4_OFFSET);
 
         // T5
-        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T5_ROW, FINAL_EXP_T4_OFFSET, FINAL_EXP_T5_OFFSET);
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, T5_ROW, FINAL_EXP_T4_OFFSET, FINAL_EXP_T5_OFFSET);
 
         // T6
-        add_constraints_cyc_sq_ext_circuit(builder, yield_constr, local_values, next_values, T6_ROW, FINAL_EXP_T3_OFFSET, FINAL_EXP_T6_OFFSET);
+        add_constraints_cyc_sq_ext_circuit(builder, yield_constr, local_values, T6_ROW, FINAL_EXP_T3_OFFSET, FINAL_EXP_T6_OFFSET);
 
         // T7
-        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T7_ROW, FINAL_EXP_T6_OFFSET, FINAL_EXP_T7_OFFSET);
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, T7_ROW, FINAL_EXP_T6_OFFSET, FINAL_EXP_T7_OFFSET);
 
         // T8
-        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T8_ROW, FINAL_EXP_T7_OFFSET, FINAL_EXP_T5_OFFSET, FINAL_EXP_T8_OFFSET);
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, T8_ROW, FINAL_EXP_T7_OFFSET, FINAL_EXP_T5_OFFSET, FINAL_EXP_T8_OFFSET);
 
         // T9
-        add_constraints_cyc_exp_ext_circuit(builder, yield_constr, local_values, next_values, T9_ROW, FINAL_EXP_T8_OFFSET, FINAL_EXP_T9_OFFSET);
+        add_constraints_cyc_exp_ext_circuit(builder, yield_constr, local_values, T9_ROW, FINAL_EXP_T8_OFFSET, FINAL_EXP_T9_OFFSET);
 
         // T10
-        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T10_ROW, FINAL_EXP_T9_OFFSET, FINAL_EXP_T10_OFFSET);
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, T10_ROW, FINAL_EXP_T9_OFFSET, FINAL_EXP_T10_OFFSET);
 
         // T11
-        add_constraints_cyc_exp_ext_circuit(builder, yield_constr, local_values, next_values, T11_ROW, FINAL_EXP_T10_OFFSET, FINAL_EXP_T11_OFFSET);
+        add_constraints_cyc_exp_ext_circuit(builder, yield_constr, local_values, T11_ROW, FINAL_EXP_T10_OFFSET, FINAL_EXP_T11_OFFSET);
 
         // T12
-        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T12_ROW, FINAL_EXP_T11_OFFSET, FINAL_EXP_T12_OFFSET);
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, T12_ROW, FINAL_EXP_T11_OFFSET, FINAL_EXP_T12_OFFSET);
 
         // T13
-        add_constraints_cyc_exp_ext_circuit(builder, yield_constr, local_values, next_values, T13_ROW, FINAL_EXP_T12_OFFSET, FINAL_EXP_T13_OFFSET);
+        add_constraints_cyc_exp_ext_circuit(builder, yield_constr, local_values, T13_ROW, FINAL_EXP_T12_OFFSET, FINAL_EXP_T13_OFFSET);
 
         // T14
-        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T14_ROW, FINAL_EXP_T13_OFFSET, FINAL_EXP_T14_OFFSET);
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, T14_ROW, FINAL_EXP_T13_OFFSET, FINAL_EXP_T14_OFFSET);
 
         // T15
-        add_constraints_cyc_sq_ext_circuit(builder, yield_constr, local_values, next_values, T15_ROW, FINAL_EXP_T5_OFFSET, FINAL_EXP_T15_OFFSET);
+        add_constraints_cyc_sq_ext_circuit(builder, yield_constr, local_values, T15_ROW, FINAL_EXP_T5_OFFSET, FINAL_EXP_T15_OFFSET);
 
         // T16
-        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T16_ROW, FINAL_EXP_T14_OFFSET, FINAL_EXP_T15_OFFSET, FINAL_EXP_T16_OFFSET);
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, T16_ROW, FINAL_EXP_T14_OFFSET, FINAL_EXP_T15_OFFSET, FINAL_EXP_T16_OFFSET);
 
         // T17
-        add_constraints_cyc_exp_ext_circuit(builder, yield_constr, local_values, next_values, T17_ROW, FINAL_EXP_T16_OFFSET, FINAL_EXP_T17_OFFSET);
+        add_constraints_cyc_exp_ext_circuit(builder, yield_constr, local_values, T17_ROW, FINAL_EXP_T16_OFFSET, FINAL_EXP_T17_OFFSET);
 
         // T18
-        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T18_ROW, FINAL_EXP_T17_OFFSET, FINAL_EXP_T18_OFFSET);
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, T18_ROW, FINAL_EXP_T17_OFFSET, FINAL_EXP_T18_OFFSET);
 
         // T19
-        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T19_ROW, FINAL_EXP_T5_OFFSET, FINAL_EXP_T12_OFFSET, FINAL_EXP_T19_OFFSET);
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, T19_ROW, FINAL_EXP_T5_OFFSET, FINAL_EXP_T12_OFFSET, FINAL_EXP_T19_OFFSET);
 
         // T20
-        add_constraints_forbenius_ext_circuit(builder, yield_constr, local_values, next_values, T20_ROW, FINAL_EXP_T19_OFFSET, FINAL_EXP_T20_OFFSET, 2);
+        add_constraints_forbenius_ext_circuit(builder, yield_constr, local_values, T20_ROW, FINAL_EXP_T19_OFFSET, FINAL_EXP_T20_OFFSET, 2);
 
         // T21
-        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T21_ROW, FINAL_EXP_T10_OFFSET, FINAL_EXP_T3_OFFSET, FINAL_EXP_T21_OFFSET);
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, T21_ROW, FINAL_EXP_T10_OFFSET, FINAL_EXP_T3_OFFSET, FINAL_EXP_T21_OFFSET);
 
         // T22
-        add_constraints_forbenius_ext_circuit(builder, yield_constr, local_values, next_values, T22_ROW, FINAL_EXP_T21_OFFSET, FINAL_EXP_T22_OFFSET, 3);
+        add_constraints_forbenius_ext_circuit(builder, yield_constr, local_values, T22_ROW, FINAL_EXP_T21_OFFSET, FINAL_EXP_T22_OFFSET, 3);
 
         // T23
-        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T23_ROW, FINAL_EXP_T3_OFFSET, FINAL_EXP_T23_OFFSET);
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, T23_ROW, FINAL_EXP_T3_OFFSET, FINAL_EXP_T23_OFFSET);
 
         // T24
-        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T24_ROW, FINAL_EXP_T16_OFFSET, FINAL_EXP_T23_OFFSET, FINAL_EXP_T24_OFFSET);
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, T24_ROW, FINAL_EXP_T16_OFFSET, FINAL_EXP_T23_OFFSET, FINAL_EXP_T24_OFFSET);
 
         // T25
-        add_constraints_forbenius_ext_circuit(builder, yield_constr, local_values, next_values, T25_ROW, FINAL_EXP_T24_OFFSET, FINAL_EXP_T25_OFFSET, 1);
+        add_constraints_forbenius_ext_circuit(builder, yield_constr, local_values, T25_ROW, FINAL_EXP_T24_OFFSET, FINAL_EXP_T25_OFFSET, 1);
 
         // T26
-        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, next_values, T26_ROW, FINAL_EXP_T8_OFFSET, FINAL_EXP_T26_OFFSET);
+        add_constraints_conjugate_ext_circuit(builder, yield_constr, local_values, T26_ROW, FINAL_EXP_T8_OFFSET, FINAL_EXP_T26_OFFSET);
 
         // T27
-        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T27_ROW, FINAL_EXP_T18_OFFSET, FINAL_EXP_T26_OFFSET, FINAL_EXP_T27_OFFSET);
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, T27_ROW, FINAL_EXP_T18_OFFSET, FINAL_EXP_T26_OFFSET, FINAL_EXP_T27_OFFSET);
 
         // T28
-        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T28_ROW, FINAL_EXP_T27_OFFSET, FINAL_EXP_T3_OFFSET, FINAL_EXP_T28_OFFSET);
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, T28_ROW, FINAL_EXP_T27_OFFSET, FINAL_EXP_T3_OFFSET, FINAL_EXP_T28_OFFSET);
 
         // T29
-        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T29_ROW, FINAL_EXP_T20_OFFSET, FINAL_EXP_T22_OFFSET, FINAL_EXP_T29_OFFSET);
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, T29_ROW, FINAL_EXP_T20_OFFSET, FINAL_EXP_T22_OFFSET, FINAL_EXP_T29_OFFSET);
 
         // T30
-        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T30_ROW, FINAL_EXP_T29_OFFSET, FINAL_EXP_T25_OFFSET, FINAL_EXP_T30_OFFSET);
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, T30_ROW, FINAL_EXP_T29_OFFSET, FINAL_EXP_T25_OFFSET, FINAL_EXP_T30_OFFSET);
 
         // T31
-        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, next_values, T31_ROW, FINAL_EXP_T30_OFFSET, FINAL_EXP_T28_OFFSET, FINAL_EXP_T31_OFFSET);
+        add_constraints_mul_ext_circuit(builder, yield_constr, local_values, T31_ROW, FINAL_EXP_T30_OFFSET, FINAL_EXP_T28_OFFSET, FINAL_EXP_T31_OFFSET);
 
         add_fp12_forbenius_map_constraints_ext_circuit(builder, yield_constr, local_values, next_values, FINAL_EXP_OP_OFFSET, Some(local_values[FINAL_EXP_FORBENIUS_MAP_SELECTOR]));
         add_fp12_multiplication_constraints_ext_circuit(builder, yield_constr, local_values, next_values, FINAL_EXP_OP_OFFSET, Some(local_values[FINAL_EXP_MUL_SELECTOR]));
