@@ -26,6 +26,7 @@ pub mod calc_pairing_precomp;
 pub mod miller_loop;
 pub mod final_exponentiate;
 pub mod fp12_mul;
+pub mod hash_to_field;
 
 fn calc_pairing_precomp<
     F: RichField + Extendable<D>,

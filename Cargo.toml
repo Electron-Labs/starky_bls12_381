@@ -6,8 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-plonky2 = {git = "https://github.com/Electron-Labs/plonky2.git", rev = "71dff6e9827f501bc59416dc25ce06c4aec030ab"}
-starky = {git = "https://github.com/Electron-Labs/plonky2.git", rev = "71dff6e9827f501bc59416dc25ce06c4aec030ab"}
+plonky2 = { git = "https://github.com/Electron-Labs/plonky2", branch = "derive_bn254_from_ff"}
+starky = { git = "https://github.com/Electron-Labs/plonky2", branch = "derive_bn254_from_ff"}
+plonky2_crypto = { git = "https://github.com/Electron-Labs/plonky2-crypto" }
 anyhow = "1.0.40"
 hex = "0.4"
 to-binary = "0.4.0"
