@@ -1,5 +1,7 @@
-use plonky2::{field::extension::Extendable, hash::hash_types::RichField, iop::{target::{BoolTarget, Target}, witness::PartialWitness}, plonk::circuit_builder::CircuitBuilder};
-use plonky2_crypto::{biguint::{BigUintTarget, CircuitBuilderBiguint}, hash::{sha256::{CircuitBuilderHashSha2, WitnessHashSha2}, CircuitBuilderHash, HashOutputTarget}, u32::{arithmetic_u32::{CircuitBuilderU32, U32Target}, interleaved_u32::CircuitBuilderB32, witness::WitnessU32}};
+use plonky2::{field::extension::Extendable, hash::hash_types::RichField, iop::{target::BoolTarget, witness::PartialWitness}, plonk::circuit_builder::CircuitBuilder};
+use plonky2_crypto::{biguint::{BigUintTarget, CircuitBuilderBiguint}, hash::{sha256::CircuitBuilderHashSha2, CircuitBuilderHash, HashOutputTarget}, u32::{arithmetic_u32::{CircuitBuilderU32, U32Target}, interleaved_u32::CircuitBuilderB32, witness::WitnessU32}};
+
+use crate::native::modulus;
 
 const DST: &str = "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
 const DST_LEN: usize = DST.len();
@@ -9,8 +11,7 @@ const L: usize = (381 + 128 + 7)/8; // bls12-381 prime bits - 381, target secuti
 #[derive(Clone, Debug)]
 pub struct HashToFieldTargets {
     pub msg: Vec<U32Target>,
-    pub expanded_msg: HashOutputTarget,
-    pub point: Vec<[[Target; 12]; M]>,
+    pub points: Vec<[[U32Target; 12]; M]>,
 }
 
 pub fn preprocess1_sha256_input<F: RichField + Extendable<D>,
@@ -91,7 +92,7 @@ pub fn expand_message_xmd<F: RichField + Extendable<D>,
     msg: &[U32Target],
     dst: &[U32Target],
     len_in_bytes: usize,
-) -> HashOutputTarget {
+) -> Vec<HashOutputTarget> {
     let b_in_bytes = 32; // SHA256 output length
     let r_in_bytes = b_in_bytes * 2;
     let ell = (len_in_bytes + b_in_bytes - 1) / b_in_bytes;
@@ -155,7 +156,7 @@ pub fn expand_message_xmd<F: RichField + Extendable<D>,
     let b0 = builder.hash_sha256(&b0_input);
     b.push(b0);
 
-    for i in 1..ell+1 {
+    for i in 1..ell {
         let bi_input = builder.add_virtual_hash_input_target(((32+1+43)*8 + 511) / 512, 512);
         let mut bi_input_bytes = vec![];
         let i2osp_i = builder.constant_u32((i+1) as u32);
@@ -171,7 +172,7 @@ pub fn expand_message_xmd<F: RichField + Extendable<D>,
         let bi = builder.hash_sha256(&bi_input);
         b.push(bi);
     }
-    b.last().unwrap().clone()
+    b
 }
 
 pub fn hash_to_field_circuit<F: RichField + Extendable<D>,
@@ -184,13 +185,31 @@ pub fn hash_to_field_circuit<F: RichField + Extendable<D>,
     let dst_bytes = DST.as_bytes();
     let len_in_bytes = count * M * L;
 
+    let modulus = builder.constant_biguint(&modulus());
+
     let msg = builder.add_virtual_u32_targets(msg_len);
     let dst = dst_bytes.iter().map(|b| builder.constant_u32(*b as u32)).collect::<Vec<U32Target>>();
-    let pseudo_random_bytes = expand_message_xmd(builder, &msg, &dst, len_in_bytes);
+    let mut pseudo_random_bytes = expand_message_xmd(builder, &msg, &dst, len_in_bytes);
+    pseudo_random_bytes.iter_mut().for_each(|big| big.limbs.reverse());
+    let mut u: Vec<[[U32Target; 12]; M]> = Vec::with_capacity(count);
+    for i in 0..count {
+        let mut e: Vec<[U32Target; 12]> = Vec::with_capacity(M);
+        for j in 0..M {
+            let elm_offset = (L * (j + i*M))/32;
+            let mut non_reduced_limbs = vec![];
+            for k in (0..L/32).rev() {
+                non_reduced_limbs.append(&mut pseudo_random_bytes[elm_offset + k].limbs);
+            }
+            let non_reduced_point = BigUintTarget { limbs: non_reduced_limbs };
+            let point = builder.rem_biguint(&non_reduced_point, &modulus);
+            e.push(point.limbs.try_into().unwrap());
+        }
+        u.push(e.try_into().unwrap());
+    }
+
     HashToFieldTargets {
         msg,
-        expanded_msg: pseudo_random_bytes,
-        point: vec![],
+        points: u,
     }
 }
 
@@ -199,18 +218,27 @@ pub fn fill_hash_to_field<F: RichField + Extendable<D>,
 >(
     pw: &mut PartialWitness<F>,
     msg: &[u8],
-    expanded_msg: &[u8],
+    points: &Vec<[Vec<u32>; 2]>,
     target: &HashToFieldTargets,
 ) {
     assert_eq!(msg.len(), target.msg.len());
     for i in 0..target.msg.len() {
         pw.set_u32_target(target.msg[i], msg[i] as u32);
     }
-    pw.set_sha256_output_target(&target.expanded_msg, expanded_msg);
+    for i in 0..target.points.len() {
+        for j in 0..M {
+            for k in 0..12 {
+                pw.set_u32_target(target.points[i][j][k], points[i][j][k]);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
+    use num_bigint::BigUint;
     use plonky2::{iop::witness::PartialWitness, plonk::{circuit_builder::CircuitBuilder, circuit_data::CircuitConfig, config::{GenericConfig, PoseidonGoldilocksConfig}}};
 
     use crate::hash_to_field::{fill_hash_to_field, hash_to_field_circuit};
@@ -225,11 +253,23 @@ mod tests {
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<F, D>::new(config);
         let msg = vec![0; 0];
-        let expanded_msg = vec![
-            15, 134,  39, 199,  93, 245, 111,  18,
-            7, 200,  54, 178,   3, 118, 202, 110,
-           168, 198,  52,  84,  77,  24, 234,  88,
-           107,  71, 116,  96, 214, 239,  14,  81
+        let points = vec![
+            [
+                BigUint::from_str(
+                    "29049427705470064014372021539200946731799999421508007424058975406727614446045474101630850618806446883308850416212"
+                ).unwrap().to_u32_digits(),
+                BigUint::from_str(
+                    "1902536696277558307181953186589646430378426314321017542292852776971493752529393071590138748612350933458183942594017"
+                ).unwrap().to_u32_digits(),
+            ],
+            [
+                BigUint::from_str(
+                    "1469261503385240180838932949518429345203566614064503355039321556894749047984560599095216903263030533722651807245292"
+                ).unwrap().to_u32_digits(),
+                BigUint::from_str(
+                    "572729459443939985969475830277770585760085104819073756927946494897811696192971610777692627017094870085003613417370"
+                ).unwrap().to_u32_digits(),
+            ]
         ];
         let target = hash_to_field_circuit(&mut builder, msg.len(), 2);
 
@@ -237,7 +277,7 @@ mod tests {
         let data = builder.build::<C>();
 
         let mut pw = PartialWitness::<F>::new();
-        fill_hash_to_field::<F, D>(&mut pw, &msg, &expanded_msg, &target);
+        fill_hash_to_field::<F, D>(&mut pw, &msg, &points, &target);
 
         let proof = data.prove(pw).expect("failed to prove");
         data.verify(proof).expect("failed to verify");
