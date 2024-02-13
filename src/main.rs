@@ -27,6 +27,10 @@ pub mod miller_loop;
 pub mod final_exponentiate;
 pub mod fp12_mul;
 pub mod hash_to_field;
+pub mod fp_plonky2;
+pub mod fp2_plonky2;
+pub mod hash_to_curve;
+pub mod g2_plonky2;
 
 fn calc_pairing_precomp<
     F: RichField + Extendable<D>,

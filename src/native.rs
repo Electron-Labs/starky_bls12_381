@@ -5,7 +5,7 @@ use std::ops::{Add, Sub, Neg, Mul, Div};
 use std::{str::FromStr, vec};
 
 
-use num_bigint::{BigUint, BigInt, Sign, ToBigInt};
+use num_bigint::{BigInt, BigUint, Sign, ToBigInt};
 
 use crate::big_arithmetic::{big_add, big_less_than, self};
 
@@ -576,6 +576,70 @@ impl Sub for Fp2 {
     }
 }
 
+impl Div for Fp2 {
+    type Output = Self;
+    fn div(self, rhs: Self) -> Self::Output {
+        self * rhs.invert()
+    }
+}
+
+impl Fp2 {
+    pub fn roots_of_unity_8th() -> Vec<Fp2> {
+        vec![
+            Fp2([Fp::one(), Fp::zero()]),
+            Fp2([Fp::zero(), Fp::one()]),
+            Fp2([Fp::get_fp_from_biguint(BigUint::from_str(
+                "1028732146235106349975324479215795277384839936929757896155643118032610843298655225875571310552543014690878354869257"
+            ).unwrap()); 2]),
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "1028732146235106349975324479215795277384839936929757896155643118032610843298655225875571310552543014690878354869257"
+                ).unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "2973677408986561043442465346520108879172042883009249989176415018091420807192182638567116318576472649347015917690530"
+                ).unwrap()),
+            ])
+        ]
+    }
+
+    pub fn etas() -> Vec<Fp2> {
+        vec![
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "1015919005498129635886032702454337503112659152043614931979881174103627376789972962005013361970813319613593700736144"
+                ).unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "1244231661155348484223428017511856347821538750986231559855759541903146219579071812422210818684355842447591283616181"
+                ).unwrap()),
+            ]),
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "2758177894066318909194361808224047808735344068952776325476298594220885430911766052020476810444659821590302988943606"
+                ).unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "1015919005498129635886032702454337503112659152043614931979881174103627376789972962005013361970813319613593700736144"
+                ).unwrap()),
+            ]),
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "1646015993121829755895883253076789309308090876275172350194834453434199515639474951814226234213676147507404483718679"
+                ).unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "1637752706019426886789797193293828301565549384974986623510918743054325021588194075665960171838131772227885159387073"
+                ).unwrap()),
+            ]),
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "2364656849202240506627992632442075854991333434964021261821139393069706628902643788776727457290883891810009113172714"
+                ).unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "1646015993121829755895883253076789309308090876275172350194834453434199515639474951814226234213676147507404483718679"
+                ).unwrap()),
+            ]),
+        ]
+    }
+}
+
 impl Mul<Fp> for Fp2 {
     type Output = Fp2;
 
@@ -941,6 +1005,27 @@ pub fn mul_fp_12(x: Fp12, y: Fp12) -> Fp12 {
 
     Fp12([x.0, y.0].concat().try_into().unwrap())
 }
+
+pub trait Pow
+where Self: Copy + Mul<Output = Self>,
+{
+    fn pow(&self, one: Self, exp: BigUint) -> Self {
+        if exp == 0u32.into() {
+            return one;
+        }
+        if exp == 1u32.into() {
+            return *self;
+        }
+        if exp.clone()%2u32 == 1u32.into() {
+            return *self * self.pow(one, exp-1u32)
+        }
+        let d = self.pow(one, exp>>1);
+        d * d
+    }
+}
+
+impl<T> Pow for T
+where T: Copy + Mul<Output = Self> {}
 
 impl Fp2 {
 
