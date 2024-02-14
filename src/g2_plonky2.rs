@@ -2,7 +2,7 @@ use num_bigint::{BigUint, ToBigUint};
 use plonky2::{field::extension::Extendable, hash::hash_types::RichField, iop::{generator::SimpleGenerator, target::{BoolTarget, Target}}, plonk::circuit_builder::CircuitBuilder};
 use plonky2_crypto::{biguint::{BigUintTarget, CircuitBuilderBiguint, GeneratedValuesBigUint, WitnessBigUint}, u32::arithmetic_u32::{CircuitBuilderU32, U32Target}};
 
-use crate::{fp2_plonky2::{add_fp2, div_fp2, is_equal, mul_fp2, negate_fp2, range_check_fp2, sub_fp2, Fp2Target}, fp_plonky2::N, native::{get_bls_12_381_parameter, modulus, Fp, Fp2}};
+use crate::{fp2_plonky2::{add_fp2, is_equal, mul_fp2, negate_fp2, range_check_fp2, sub_fp2, Fp2Target}, fp_plonky2::N, native::{get_bls_12_381_parameter, modulus, Fp, Fp2}};
 
 pub type PointG2Target = [Fp2Target; 2];
 
@@ -238,27 +238,11 @@ pub fn g2_scalar_mul<F: RichField + Extendable<D>,
     r
 }
 
-pub fn g2_to_affine<F: RichField + Extendable<D>,
-    const D: usize,
->(
-    builder: &mut CircuitBuilder<F, D>,
-    x: &Fp2Target,
-    y: &Fp2Target,
-    z: &Fp2Target,
-) -> PointG2Target {
-    [
-        div_fp2(builder, x, z),
-        div_fp2(builder, y, z),
-    ]
-}
-
 pub fn signature_point_check<F: RichField + Extendable<D>,
     const D: usize,
 >(
     builder: &mut CircuitBuilder<F, D>,
-    point_x: &Fp2Target,
-    point_y: &Fp2Target,
-    point_z: &Fp2Target,
+    point: &PointG2Target,
     sig: &[Target; SIG_LEN],
 ){
     let msbs = builder.split_le(sig[0], 8);
@@ -267,8 +251,7 @@ pub fn signature_point_check<F: RichField + Extendable<D>,
 
     let aflag = msbs[5];
 
-    let point_affine = g2_to_affine(builder, point_x, point_y, point_z);
-    let (x0, x1, y0, y1) = (&point_affine[0][0], &point_affine[0][1], &point_affine[1][0], &point_affine[1][1]);
+    let (x0, x1, y0, y1) = (&point[0][0], &point[0][1], &point[1][0], &point[1][1]);
     let y1_zero = crate::fp_plonky2::is_zero(builder, &y1);
     let zero = builder.zero_u32();
     let y_select_limbs: Vec<U32Target> = (0..N).into_iter().map(|i| U32Target(builder.select(
@@ -867,14 +850,6 @@ mod tests {
                 "508402758079580872259652181430201489694066144504950057753724961054091567713555160539784585997814439522141428760875"
             ).unwrap()),
         ]);
-        let z = Fp2([
-            Fp::get_fp_from_biguint(BigUint::from_str(
-                "1"
-            ).unwrap()),
-            Fp::get_fp_from_biguint(BigUint::from_str(
-                "0"
-            ).unwrap()),
-        ]);
         let sig = vec![
             139, 126,  67,  23, 196, 226,  59, 211, 144, 232, 136, 101,
             183,  50, 126, 215, 210, 110,  97, 248, 215, 138, 135,  11,
@@ -896,23 +871,18 @@ mod tests {
         let y_c0 = builder.add_virtual_biguint_target(N);
         let y_c1 = builder.add_virtual_biguint_target(N);
         let point_y = [y_c0, y_c1];
-        let z_c0 = builder.add_virtual_biguint_target(N);
-        let z_c1 = builder.add_virtual_biguint_target(N);
-        let point_z = [z_c0, z_c1];
+        let point = [point_x, point_y];
 
         let sig = builder.add_virtual_target_arr::<SIG_LEN>();
 
-        signature_point_check(&mut builder, &point_x, &point_y, &point_z, &sig);
+        signature_point_check(&mut builder, &point, &sig);
 
         let mut pw = PartialWitness::<F>::new();
-        pw.set_biguint_target(&point_x[0], &x.0[0].to_biguint());
-        pw.set_biguint_target(&point_x[1], &x.0[1].to_biguint());
+        pw.set_biguint_target(&point[0][0], &x.0[0].to_biguint());
+        pw.set_biguint_target(&point[0][1], &x.0[1].to_biguint());
 
-        pw.set_biguint_target(&point_y[0], &y.0[0].to_biguint());
-        pw.set_biguint_target(&point_y[1], &y.0[1].to_biguint());
-
-        pw.set_biguint_target(&point_z[0], &z.0[0].to_biguint());
-        pw.set_biguint_target(&point_z[1], &z.0[1].to_biguint());
+        pw.set_biguint_target(&point[1][0], &y.0[0].to_biguint());
+        pw.set_biguint_target(&point[1][1], &y.0[1].to_biguint());
 
         pw.set_target_arr(&sig, &sig_f);
 

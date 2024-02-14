@@ -2,33 +2,17 @@ use num_bigint::BigUint;
 use plonky2::{field::extension::Extendable, hash::hash_types::RichField, iop::target::Target, plonk::circuit_builder::CircuitBuilder};
 use plonky2_crypto::{biguint::{BigUintTarget, CircuitBuilderBiguint}, u32::arithmetic_u32::{CircuitBuilderU32, U32Target}};
 
-use crate::{fp_plonky2::{div_fp, FpTarget, N}, native::modulus};
+use crate::{fp_plonky2::{FpTarget, N}, native::modulus};
 
 pub type PointG1Target = [FpTarget; 2];
 
 pub const PUB_KEY_LEN: usize = 48;
 
-pub fn g1_to_affine<F: RichField + Extendable<D>,
-    const D: usize,
->(
-    builder: &mut CircuitBuilder<F, D>,
-    x: &FpTarget,
-    y: &FpTarget,
-    z: &FpTarget,
-) -> PointG1Target {
-    [
-        div_fp(builder, x, z),
-        div_fp(builder, y, z),
-    ]
-}
-
 pub fn pk_point_check<F: RichField + Extendable<D>,
     const D: usize,
 >(
     builder: &mut CircuitBuilder<F, D>,
-    point_x: &FpTarget,
-    point_y: &FpTarget,
-    point_z: &FpTarget,
+    point: &PointG1Target,
     pk: &[Target; PUB_KEY_LEN],
 ){
     let msbs = builder.split_le(pk[0], 8);
@@ -37,8 +21,7 @@ pub fn pk_point_check<F: RichField + Extendable<D>,
 
     let aflag = msbs[5];
 
-    let point_affine = g1_to_affine(builder, point_x, point_y, point_z);
-    let (x, y) = (&point_affine[0], &point_affine[1]);
+    let (x, y) = (&point[0], &point[1]);
     let two = builder.constant_biguint(&2u32.into());
     let y_2 = builder.mul_biguint(y, &two);
     let p = builder.constant_biguint(&modulus());
@@ -98,9 +81,6 @@ mod tests {
         let y_fp = Fp::get_fp_from_biguint(BigUint::from_str(
                 "1129849551898749416521145382954514863932842971284587833618170655784677795582674723477811354555329195575398134182304"
             ).unwrap());
-        let z_fp = Fp::get_fp_from_biguint(BigUint::from_str(
-                "1"
-            ).unwrap());
         let pk = vec![
             137,  43, 218, 171,  28,   7, 187, 176, 109,
             242, 254, 250, 130, 131,  36,  52,   5, 250,
@@ -116,18 +96,16 @@ mod tests {
 
         let x = builder.add_virtual_biguint_target(N);
         let y = builder.add_virtual_biguint_target(N);
-        let z = builder.add_virtual_biguint_target(N);
+        let point = [x, y];
 
         let pk = builder.add_virtual_target_arr::<PUB_KEY_LEN>();
 
-        pk_point_check(&mut builder, &x, &y, &z, &pk);
+        pk_point_check(&mut builder, &point, &pk);
 
         let mut pw = PartialWitness::<F>::new();
-        pw.set_biguint_target(&x, &x_fp.to_biguint());
+        pw.set_biguint_target(&point[0], &x_fp.to_biguint());
 
-        pw.set_biguint_target(&y, &y_fp.to_biguint());
-
-        pw.set_biguint_target(&z, &z_fp.to_biguint());
+        pw.set_biguint_target(&point[1], &y_fp.to_biguint());
 
         pw.set_target_arr(&pk, &pk_f);
 
