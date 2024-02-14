@@ -30,6 +30,7 @@ pub mod hash_to_field;
 pub mod fp_plonky2;
 pub mod fp2_plonky2;
 pub mod hash_to_curve;
+pub mod g1_plonky2;
 pub mod g2_plonky2;
 
 fn calc_pairing_precomp<

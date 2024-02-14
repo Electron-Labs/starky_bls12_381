@@ -210,7 +210,11 @@ pub fn egcd(a: BigUint, b: BigUint) -> BigUint {
     }
     // println!("x {:?}", x);
     let mod_bigint = modulus().to_bigint().unwrap();
-    ((x%mod_bigint.clone())+mod_bigint).to_biguint().unwrap()
+    if x < 0.into() {
+        ((x%mod_bigint.clone())+mod_bigint).to_biguint().unwrap()
+    } else {
+        (x%mod_bigint.clone()).to_biguint().unwrap()
+    }
 }
 
 pub fn mod_inverse(a: BigUint, m: BigUint) -> BigUint {
