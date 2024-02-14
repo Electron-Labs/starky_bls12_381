@@ -1,4 +1,4 @@
-use plonky2::{field::extension::Extendable, hash::hash_types::RichField, iop::target::BoolTarget, plonk::circuit_builder::CircuitBuilder};
+use plonky2::{field::extension::Extendable, hash::hash_types::RichField, iop::target::{BoolTarget, Target}, plonk::circuit_builder::CircuitBuilder};
 use plonky2_crypto::{biguint::{BigUintTarget, CircuitBuilderBiguint}, hash::{sha256::CircuitBuilderHashSha2, CircuitBuilderHash, HashOutputTarget}, u32::{arithmetic_u32::{CircuitBuilderU32, U32Target}, interleaved_u32::CircuitBuilderB32}};
 
 use crate::{fp2_plonky2::Fp2Target, fp_plonky2::FpTarget, native::modulus};
@@ -83,7 +83,7 @@ pub fn expand_message_xmd<F: RichField + Extendable<D>,
     const D: usize
 >(
     builder: &mut CircuitBuilder<F, D>,
-    msg: &[U32Target],
+    msg: &[Target],
     dst: &[U32Target],
     len_in_bytes: usize,
 ) -> Vec<HashOutputTarget> {
@@ -121,7 +121,7 @@ pub fn expand_message_xmd<F: RichField + Extendable<D>,
         input_bytes.push(z_pad[i]);
     }
     for i in 0..msg.len() {
-        input_bytes.push(msg[i]);
+        input_bytes.push(U32Target(msg[i]));
     }
     for i in 0..l_i_b_str.len() {
         input_bytes.push(l_i_b_str[i]);
@@ -172,7 +172,7 @@ pub fn hash_to_field<F: RichField + Extendable<D>,
     const D: usize
 >(
     builder: &mut CircuitBuilder<F, D>,
-    msg: &[U32Target],
+    msg: &[Target],
     count: usize,
 ) -> Vec<Fp2Target> {
     let dst_bytes = DST.as_bytes();
@@ -207,8 +207,8 @@ mod tests {
     use std::str::FromStr;
 
     use num_bigint::BigUint;
-    use plonky2::{iop::witness::PartialWitness, plonk::{circuit_builder::CircuitBuilder, circuit_data::CircuitConfig, config::{GenericConfig, PoseidonGoldilocksConfig}}};
-    use plonky2_crypto::{biguint::WitnessBigUint, u32::{arithmetic_u32::CircuitBuilderU32, witness::WitnessU32}};
+    use plonky2::{field::types::Field, iop::witness::{PartialWitness, WitnessWrite}, plonk::{circuit_builder::CircuitBuilder, circuit_data::CircuitConfig, config::{GenericConfig, PoseidonGoldilocksConfig}}};
+    use plonky2_crypto::biguint::WitnessBigUint;
 
     use crate::hash_to_field::{hash_to_field, M};
 
@@ -240,16 +240,15 @@ mod tests {
                 ).unwrap(),
             ]
         ];
-        let msg_target = builder.add_virtual_u32_targets(msg.len());
+        let msg_target = builder.add_virtual_targets(msg.len());
         let point_targets = hash_to_field(&mut builder, &msg_target, 2);
 
         builder.print_gate_counts(0);
         let data = builder.build::<C>();
 
         let mut pw = PartialWitness::<F>::new();
-        for i in 0..msg_target.len() {
-            pw.set_u32_target(msg_target[i], msg[i] as u32);
-        }
+        let msg_f = msg.iter().map(|m| F::from_canonical_u32(*m)).collect::<Vec<F>>();
+        pw.set_target_arr(&msg_target, &msg_f);
         for i in 0..point_targets.len() {
             for j in 0..M {
                 pw.set_biguint_target(&point_targets[i][j], &points[i][j]);

@@ -322,7 +322,7 @@ pub fn hash_to_curve<F: RichField + Extendable<D>,
     const D: usize
 >(
     builder: &mut CircuitBuilder<F, D>,
-    msg: &[U32Target],
+    msg: &[Target],
 ) -> PointG2Target {
     let iso_3_a = [
         builder.constant_biguint(&0.to_biguint().unwrap()),
@@ -450,8 +450,8 @@ mod tests {
     use std::str::FromStr;
 
     use num_bigint::BigUint;
-    use plonky2::{iop::witness::PartialWitness, plonk::{circuit_builder::CircuitBuilder, circuit_data::CircuitConfig, config::{GenericConfig, PoseidonGoldilocksConfig}}};
-    use plonky2_crypto::{biguint::{CircuitBuilderBiguint, WitnessBigUint}, u32::{arithmetic_u32::CircuitBuilderU32, witness::WitnessU32}};
+    use plonky2::{field::types::Field, iop::witness::{PartialWitness, WitnessWrite}, plonk::{circuit_builder::CircuitBuilder, circuit_data::CircuitConfig, config::{GenericConfig, PoseidonGoldilocksConfig}}};
+    use plonky2_crypto::biguint::{CircuitBuilderBiguint, WitnessBigUint};
 
     use crate::{fp_plonky2::N, native::{Fp, Fp2}};
 
@@ -470,15 +470,14 @@ mod tests {
 
         let msg = vec![0; 0];
 
-        let msg_targets = builder.add_virtual_u32_targets(msg.len());
+        let msg_targets = builder.add_virtual_targets(msg.len());
         let point_g2 = hash_to_curve(&mut builder, &msg_targets);
         builder.print_gate_counts(0);
 
         let data = builder.build::<C>();
         let mut pw = PartialWitness::<F>::new();
-        for i in 0..msg_targets.len() {
-            pw.set_u32_target(msg_targets[i], msg[i]);
-        }
+        let msg_f = msg.iter().map(|m| F::from_canonical_u32(*m)).collect::<Vec<F>>();
+        pw.set_target_arr(&msg_targets, &msg_f);
         pw.set_biguint_target(&point_g2[0][0], &BigUint::from_str("2484880953070652509895159898261749949971419256101265549903463729658081179969788208734336814677878439015289354663558").unwrap());
         pw.set_biguint_target(&point_g2[0][1], &BigUint::from_str("571286950361770968319560191831515067050084989489837870994029396792668285219017899793859671802388182901315402858724").unwrap());
         pw.set_biguint_target(&point_g2[1][0], &BigUint::from_str("3945400848309661287520855376438021610375515007889273149322439985738679863089347725379973912108534346949384256127526").unwrap());
