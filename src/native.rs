@@ -239,6 +239,14 @@ pub fn get_u32_vec_from_literal(x: BigUint) -> [u32; 12] {
     x_u32_vec.try_into().unwrap()
 }
 
+pub fn get_u32_vec_from_literal_ref(x: &BigUint) -> [u32; 12] {
+    let mut x_u32_vec: Vec<u32> = x.to_u32_digits();
+    while x_u32_vec.len() != 12 {
+        x_u32_vec.push(0 as u32);
+    }
+    x_u32_vec.try_into().unwrap()
+}
+
 pub fn get_selector_bits_from_u32(x: u32) -> [u32; 12] {
     // assert!(x<=4096);
     let mut res = [0u32; 12];
@@ -251,6 +259,14 @@ pub fn get_selector_bits_from_u32(x: u32) -> [u32; 12] {
 }
 
 pub fn get_u32_vec_from_literal_24(x: BigUint) -> [u32; 24] {
+    let mut x_u32_vec: Vec<u32> = x.to_u32_digits();
+    while x_u32_vec.len() != 24 {
+        x_u32_vec.push(0 as u32);
+    }
+    x_u32_vec.try_into().unwrap()
+}
+
+pub fn get_u32_vec_from_literal_ref_24(x: &BigUint) -> [u32; 24] {
     let mut x_u32_vec: Vec<u32> = x.to_u32_digits();
     while x_u32_vec.len() != 24 {
         x_u32_vec.push(0 as u32);
