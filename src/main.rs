@@ -1,8 +1,8 @@
 use num_bigint::BigUint;
-use plonky2::{plonk::config::{PoseidonGoldilocksConfig, GenericConfig}, util::timing::TimingTree};
+use plonky2::{plonk::config::{GenericConfig, PoseidonGoldilocksConfig}, util::{log2_ceil, timing::TimingTree}};
 use plonky2_crypto::{biguint::{BigUintTarget, CircuitBuilderBiguint}, u32::arithmetic_u32::U32Target};
 use starky::{config::StarkConfig, prover::prove, verifier::verify_stark_proof};
-use crate::{calc_pairing_precomp::PairingPrecompStark, final_exponentiate::FinalExponentiateStark, fp12_mul::FP12MulStark, fp_plonky2::N, g1_plonky2::{pk_point_check, PUB_KEY_LEN}, g2_plonky2::{signature_point_check, SIG_LEN}, hash_to_curve::hash_to_curve, miller_loop::MillerLoopStark, native::{Fp, Fp12, Fp2}};
+use crate::{calc_pairing_precomp::PairingPrecompStark, ecc_aggregate::ECCAggStark, final_exponentiate::FinalExponentiateStark, fp12_mul::FP12MulStark, fp_plonky2::N, g1_plonky2::{pk_point_check, PUB_KEY_LEN}, g2_plonky2::{signature_point_check, SIG_LEN}, hash_to_curve::hash_to_curve, miller_loop::MillerLoopStark, native::{Fp, Fp12, Fp2}};
 use starky::util::trace_rows_to_poly_values;
 use std::{str::FromStr, time::Instant};
 
@@ -195,6 +195,46 @@ fn final_exponentiate_main<
     (stark, proof, config)
 }
 
+fn ec_aggregate_main<
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F=F>,
+    const D: usize
+>(points: Vec<[Fp; 2]>, res: [Fp; 2], bits: Vec<bool>) -> (ECCAggStark<F, D>, starky::proof::StarkProofWithPublicInputs<F, C, D>, StarkConfig) {
+    let mut config = StarkConfig::standard_fast_config();
+    config.fri_config.rate_bits = 2;
+    let num_rows = 1<<log2_ceil((points.len()-1)*12);
+    let stark = ECCAggStark::<F, D>::new(num_rows);
+    let s = Instant::now();
+    let mut public_inputs = Vec::<F>::new();
+    for pt in &points {
+        for x in &pt[0].0 {
+            public_inputs.push(F::from_canonical_u32(*x));
+        }
+        for y in &pt[1].0 {
+            public_inputs.push(F::from_canonical_u32(*y));
+        }
+    }
+    for x in res[0].0 {
+        public_inputs.push(F::from_canonical_u32(x));
+    }
+    for y in res[1].0 {
+        public_inputs.push(F::from_canonical_u32(y));
+    }
+    assert_eq!(public_inputs.len(), ecc_aggregate::PUBLIC_INPUTS);
+    let trace = stark.generate_trace(&points, &bits);
+    let trace_poly_values = trace_rows_to_poly_values(trace);
+    let proof = prove::<F, C, ECCAggStark<F, D>, D>(
+        stark,
+        &config,
+        trace_poly_values,
+        &public_inputs,
+        &mut TimingTree::default(),
+    ).unwrap();
+    println!("Time taken for acc_agg stark proof {:?}", s.elapsed());
+    verify_stark_proof(stark, proof.clone(), &config).unwrap();
+    (stark, proof, config)
+}
+
 fn aggregate_proof() {
     const D: usize = 2;
     type C = PoseidonGoldilocksConfig;
@@ -204,16 +244,53 @@ fn aggregate_proof() {
     type MlStark = MillerLoopStark<F, D>;
     type Fp12MulStark = FP12MulStark<F, D>;
     type FeStark = FinalExponentiateStark<F, D>;
+    type ECAggStark = ECCAggStark<F, D>;
 
-    let px1 = Fp::get_fp_from_biguint(BigUint::from_str("1411593089133753962474730354030258013436363179669233753420355895053483563962487440344772403327192608890810553901021").unwrap());
-    let py1 = Fp::get_fp_from_biguint(BigUint::from_str("1129849551898749416521145382954514863932842971284587833618170655784677795582674723477811354555329195575398134182304").unwrap());
+    let points = vec![
+        [
+            Fp::get_fp_from_biguint(BigUint::from_str("3204138955814570578163609245534537991184203369979786968842881480076799789054981632540434360211986881033031472658003").unwrap()),
+            Fp::get_fp_from_biguint(BigUint::from_str("3400436843331243255025775671359320832363887837093257363324494062808177888976930512820808727051373705973107275596119").unwrap()),
+        ],
+        [
+            Fp::get_fp_from_biguint(BigUint::from_str("1101601737221706935109816861121870935969966708030370202803894334105334358317103767010405906904724717953819864305475").unwrap()),
+            Fp::get_fp_from_biguint(BigUint::from_str("2064714532506765361908058428125785453945021969836533091101878795902523891899248198975064034221224974951243095831271").unwrap()),
+        ],
+        [
+            Fp::get_fp_from_biguint(BigUint::from_str("1346643022941237800159313209100746455104371997080613959634163427450219360879349073912415640276897934908131829885184").unwrap()),
+            Fp::get_fp_from_biguint(BigUint::from_str("1712788991679293507887700660369980906279919831589234955852173033905487490155444583094339422053170211142384092687628").unwrap()),
+        ],
+        [
+            Fp::get_fp_from_biguint(BigUint::from_str("1031639803009669276882438963763981275074329140720160354665639552098213397982643116932932030191763933194586471909627").unwrap()),
+            Fp::get_fp_from_biguint(BigUint::from_str("3726372909620496167814358707804602244514273294790070245553214196247327852781072012573878272832314221345853766477953").unwrap()),
+        ],
+        [
+            Fp::get_fp_from_biguint(BigUint::from_str("2085001279304652784006067885796453258851694636386816006411973174502146339457892744460495709989765802644147560717816").unwrap()),
+            Fp::get_fp_from_biguint(BigUint::from_str("1390666781016039523434196082048737611089630897903128060749583361970460589620202298030510104038715416317703964768542").unwrap()),
+        ],
+    ];
+    let res: [Fp; 2] = [
+        Fp::get_fp_from_biguint(BigUint::from_str("1087234969399043337532762145805345524271996637454313824378364062590589536160217698088146259941330713744485370761187").unwrap()),
+        Fp::get_fp_from_biguint(BigUint::from_str("3136236634071708553925641468996902690489869721550807157708175819862626511757026243446358296870755620456180595452223").unwrap()),
+    ];
+    let bits = vec![true; points.len()];
+
+    println!("ec aggregate stark");
+    let (
+        stark_ec,
+        proof_ec,
+        config_ec
+    ) = ec_aggregate_main::<F, C, D>(points, res, bits);
+    let recursive_ec = recursive_proof::<F, C, ECAggStark, C, D>(stark_ec, proof_ec, &config_ec, true);
+
+    let px1 = res[0];
+    let py1 = res[1];
     let q_x1 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_str("2484880953070652509895159898261749949971419256101265549903463729658081179969788208734336814677878439015289354663558").unwrap()),
-        Fp::get_fp_from_biguint(BigUint::from_str("571286950361770968319560191831515067050084989489837870994029396792668285219017899793859671802388182901315402858724").unwrap()),
+        Fp::get_fp_from_biguint(BigUint::from_str("1505722259415310266779135205437121965740464413893960596196733603147581884791988893744101733970478256891055375945536").unwrap()),
+        Fp::get_fp_from_biguint(BigUint::from_str("1340668519720881607961131679928620414840483177443456807087496430579808669980316362600672382339984992997204446029721").unwrap()),
     ]);
     let q_y1 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_str("3945400848309661287520855376438021610375515007889273149322439985738679863089347725379973912108534346949384256127526").unwrap()),
-        Fp::get_fp_from_biguint(BigUint::from_str("1067268791373784971379690868996146496995005458163356395218843329703930727067637736115073576974603814754170298346268").unwrap()),
+        Fp::get_fp_from_biguint(BigUint::from_str("1736295234468997273821029500893781562836275683336158580517989036137419470229009617876811879653872185340706405922178").unwrap()),
+        Fp::get_fp_from_biguint(BigUint::from_str("2424193914082549242180464768220335415996860337456428622667083208994155010064986010416627744636795804106402407557929").unwrap()),
     ]);
     let q_z1 = Fp2([
         Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
@@ -239,12 +316,12 @@ fn aggregate_proof() {
     let px2 = Fp::get_fp_from_biguint(BigUint::from_str("3685416753713387016781088315183077757961620795782546409894578378688607592378376318836054947676345821548104185464507").unwrap());
     let py2 = Fp::get_fp_from_biguint(BigUint::from_str("2662903010277190920397318445793982934971948944000658264905514399707520226534504357969962973775649129045502516118218").unwrap());
     let q_x2 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_str("2132190448044539512343458281906429348357553485972550361022637600291474790426714276782518732598485406127127542511958").unwrap()),
-        Fp::get_fp_from_biguint(BigUint::from_str("1768967113711705180967647921989767607043027235135825860038026636952386389242730816293578938377273126163720266364901").unwrap()),
+        Fp::get_fp_from_biguint(BigUint::from_str("304916624593589725758998192556906432588442835131785285875484156350300323256553323177480097246911735623586417719757").unwrap()),
+        Fp::get_fp_from_biguint(BigUint::from_str("571683617417147406164343177484195831633317889851162360601199727543177539914402642614657067649863132648953763352885").unwrap()),
     ]);
     let q_y2 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_str("1601269830186296343258204708609068858787525822280553591425324687245481424080606221266002538737401918289754033770338").unwrap()),
-        Fp::get_fp_from_biguint(BigUint::from_str("508402758079580872259652181430201489694066144504950057753724961054091567713555160539784585997814439522141428760875").unwrap()),
+        Fp::get_fp_from_biguint(BigUint::from_str("1417349350435972599763912691298115467938931059184091147527970191503761433500070433784861919103649993499233201391892").unwrap()),
+        Fp::get_fp_from_biguint(BigUint::from_str("1682756831248378783150359974203437061444894692587983127813303708041999183911542679268931185532855646639209016254767").unwrap()),
     ]);
     let q_z2 = Fp2([
         Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
@@ -286,36 +363,75 @@ fn aggregate_proof() {
     ) = final_exponentiate_main::<F, C, D>(final_exp_input);
     let recursive_final_exp = recursive_proof::<F, C, FeStark, C, D>(stark_final_exp, proof_final_exp, &config_final_exp, true);
 
-    let msg = vec![];
+    let msg = vec![
+        99, 172,  62, 204, 126, 207, 244,   3,
+        60,  22, 106,  26, 222,  12,  60,  19,
+        63, 222,  36, 235, 255, 224,  19, 208,
+       121,  15, 171,  19, 200,   2, 192, 215
+     ];
     let sig = [
-        139, 126,  67,  23, 196, 226,  59, 211, 144, 232, 136, 101,
-        183,  50, 126, 215, 210, 110,  97, 248, 215, 138, 135,  11,
-        184, 144,   5, 162, 250, 243, 244,  51, 140,  27, 110,   7,
-        158,  63,  35, 135,  61,  90, 233,   5, 135,  72, 183, 229,
-        13, 218, 102,  33,  65,  70,  85,  67, 129, 210, 109,  61,
-        39, 103, 248,   6, 238, 111, 155, 116, 213,  81, 130, 121,
-        92, 156,  15, 149,  69,  65,  43,  98, 117, 125, 244,  59,
-        143,  22,  72,  75,  38,  67, 175, 183, 249,   6,  57,  86
-    ];
-    let pk = [
-        137,  43, 218, 171,  28,   7, 187, 176, 109,
-        242, 254, 250, 130, 131,  36,  52,   5, 250,
-        52, 180, 134,  10, 178, 231, 178,  58,  55,
-        126, 255, 212, 103,  96, 128,  72, 218, 203,
-        176, 158, 145,   7, 181, 216, 163, 154,  82,
-        112, 159, 221
+        131, 182, 220, 150, 162,  98,  63,  32, 235, 202, 139, 103,
+         15,  26,  31,  47, 173, 101, 131, 249,  51,  28,  81, 144,
+         40, 231,  88,   1,  73, 149, 252,  71, 136,  38,  25, 142,
+        218, 140, 140,  55, 194, 243, 171,  82,   1, 160,  81,  53,
+          1, 251,  40,  70,  50, 110, 166,  57, 167,  36,  11, 111,
+        233,  36,  77,  29,  59,  45,  45, 133,  60,  69,  83, 211,
+        243, 141, 119,  26,  69, 131, 234,  97,   3, 124,  45, 238,
+         97,  40,  60,  67,  47,  52,  85, 150, 248, 111, 185, 205
+      ];
+    let pks = vec![
+        [
+      180, 209,  85, 127, 227, 149, 141, 182, 246,
+      216, 134,  63, 159,   4,  66, 177, 100, 149,
+      111, 221,  78, 211, 187, 183, 133, 254,  76,
+      212,  77, 220, 124,  41, 198, 251,  76, 235,
+      173,  56, 105, 140, 151, 142,   4, 115, 185,
+       88,  54,  83
+    ],
+    [
+        167,  40,  65, 152, 126,  79,  33, 157,  84,
+        242, 182, 169, 234, 197, 254, 110, 120, 112,
+         70,  68, 117,  60,  53, 121, 231, 118, 163,
+        105,  27, 193,  35, 116,  63, 140,  99, 119,
+         14, 208, 247,  42, 113, 233, 233, 100, 219,
+        245, 143,  67
+      ],
+      [
+        136, 191, 211,  48, 232, 185, 131, 122, 211,  69,
+        233,  39,  25,  49,  74,  29, 147, 117, 247, 212,
+        236, 219,  38, 210,   5, 183, 244,  23,  21,  77,
+         73,   0, 159,  18,  40,   3,  45, 129, 166, 184,
+        107, 137,  18,  76,  57,  60,  41,   0
+      ],
+      [
+        166, 179, 228,  21, 198,  74,  35,  27,  71,
+        249,  74, 188, 161, 199, 218,  63, 109,  57,
+        195, 124,  24,  44, 165, 146, 123, 229, 164,
+        152, 120,  17,  59, 237, 222, 233,  90, 228,
+         36,  85,  97, 170, 215,  12, 226, 187, 183,
+        101, 200, 251
+      ],
+      [
+        141, 139, 233,  43, 222, 138, 241, 185, 223,
+         19, 213, 168, 237, 138,  58,   1, 234, 182,
+        238,  76, 248, 131, 215, 152, 124,  29, 120,
+        192, 215, 217, 181,  58, 134,  48,  84,  31,
+        221, 245, 227,  36, 182, 207,  73,   0,  67,
+         91,  29, 248
+      ],
     ];
 
     aggregate_recursive_proof::<F, C, C, D>(
         &msg,
         &sig,
-        &pk,
+        &pks,
         &recursive_pp1,
         &recursive_ml1,
         &recursive_pp2,
         &recursive_ml2,
         &recursive_fp12_mul,
         &recursive_final_exp,
+        &recursive_ec,
     ).unwrap();
 }
 
@@ -369,13 +485,14 @@ fn aggregate_recursive_proof<
 >(
     msg: &[u8],
     sig: &[u8; SIG_LEN],
-    pk: &[u8; PUB_KEY_LEN],
+    pks: &[[u8; PUB_KEY_LEN]],
     inner_pp1: &ProofTuple<F, InnerC, D>,
     inner_ml1: &ProofTuple<F, InnerC, D>,
     inner_pp2: &ProofTuple<F, InnerC, D>,
     inner_ml2: &ProofTuple<F, InnerC, D>,
     inner_fp12m: &ProofTuple<F, InnerC, D>,
     inner_fe: &ProofTuple<F, InnerC, D>,
+    inner_ec: &ProofTuple<F, InnerC, D>,
 ) -> Result<ProofTuple<F, C, D>>
 where
     InnerC::Hasher: AlgebraicHasher<F>,
@@ -387,6 +504,7 @@ where
     let (inner_proof_ml2, inner_vd_ml2, inner_cd_ml2) = inner_ml2;
     let (inner_proof_fp12m, inner_vd_fp12m, inner_cd_fp12m) = inner_fp12m;
     let (inner_proof_fe, inner_vd_fe, inner_cd_fe) = inner_fe;
+    let (inner_proof_ec, inner_vd_ec, inner_cd_ec) = inner_ec;
 
     let mut builder = CircuitBuilder::<F, D>::new(config.clone());
     let pt_pp1 = builder.add_virtual_proof_with_pis(inner_cd_pp1);
@@ -395,10 +513,14 @@ where
     let pt_ml2 = builder.add_virtual_proof_with_pis(inner_cd_ml2);
     let pt_fp12m = builder.add_virtual_proof_with_pis(inner_cd_fp12m);
     let pt_fe = builder.add_virtual_proof_with_pis(inner_cd_fe);
+    let pt_ec = builder.add_virtual_proof_with_pis(inner_cd_ec);
   
     let msg_targets = builder.add_virtual_targets(msg.len());
     let sig_targets = builder.add_virtual_target_arr::<SIG_LEN>();
-    let pk_targets = builder.add_virtual_target_arr::<PUB_KEY_LEN>();
+    let mut pk_targets = vec![];
+    for _ in 0..pks.len() {
+        pk_targets.push(builder.add_virtual_target_arr::<PUB_KEY_LEN>());
+    }
 
     let hm = hash_to_curve(&mut builder, &msg_targets);
     let one = builder.one();
@@ -420,14 +542,23 @@ where
         builder.connect(pt_pp1.public_inputs[calc_pairing_precomp::ELL_COEFFS_PUBLIC_INPUTS_OFFSET + i], pt_ml1.public_inputs[miller_loop::PIS_ELL_COEFFS_OFFSET + i]);
     }
 
-    let pk_point_x = BigUintTarget {
-        limbs: (0..N).into_iter().map(|i| U32Target(pt_ml1.public_inputs[miller_loop::PIS_PX_OFFSET + i])).collect(),
-    };
-    let pk_point_y = BigUintTarget {
-        limbs: (0..N).into_iter().map(|i| U32Target(pt_ml1.public_inputs[miller_loop::PIS_PY_OFFSET + i])).collect(),
-    };
-    let pk_point = [pk_point_x, pk_point_y];
-    pk_point_check(&mut builder, &pk_point, &pk_targets);
+    for idx in 0..pk_targets.len() {
+        let pk_point_x = BigUintTarget {
+            limbs: (0..N).into_iter().map(|i| U32Target(pt_ec.public_inputs[ecc_aggregate::POINTS + idx*24 + i])).collect(),
+        };
+        let pk_point_y = BigUintTarget {
+            limbs: (0..N).into_iter().map(|i| U32Target(pt_ec.public_inputs[ecc_aggregate::POINTS + idx*24 + 12 + i])).collect(),
+        };
+        let pk_point = [pk_point_x, pk_point_y];
+        pk_point_check(&mut builder, &pk_point, &pk_targets[idx]);
+    }
+
+    for i in 0..12 {
+        builder.connect(pt_ec.public_inputs[ecc_aggregate::RES + i], pt_ml1.public_inputs[miller_loop::PIS_PX_OFFSET + i]);
+    }
+    for i in 0..12 {
+        builder.connect(pt_ec.public_inputs[ecc_aggregate::RES + i + 12], pt_ml1.public_inputs[miller_loop::PIS_PY_OFFSET + i]);
+    }
 
     for i in 0..24*3*2 {
         builder.connect(pt_ml1.public_inputs[miller_loop::PIS_RES_OFFSET + i], pt_fp12m.public_inputs[fp12_mul::PIS_INPUT_X_OFFSET + i]);
@@ -490,6 +621,7 @@ where
     let inner_data_ml2 = builder.add_virtual_verifier_data(inner_cd_ml2.config.fri_config.cap_height);
     let inner_data_fp12m = builder.add_virtual_verifier_data(inner_cd_fp12m.config.fri_config.cap_height);
     let inner_data_fe = builder.add_virtual_verifier_data(inner_cd_fe.config.fri_config.cap_height);
+    let inner_data_ec = builder.add_virtual_verifier_data(inner_cd_ec.config.fri_config.cap_height);
 
     builder.verify_proof::<InnerC>(&pt_pp1, &inner_data_pp1, inner_cd_pp1);
     builder.verify_proof::<InnerC>(&pt_ml1, &inner_data_ml1, inner_cd_ml1);
@@ -497,10 +629,13 @@ where
     builder.verify_proof::<InnerC>(&pt_ml2, &inner_data_ml2, inner_cd_ml2);
     builder.verify_proof::<InnerC>(&pt_fp12m, &inner_data_fp12m, inner_cd_fp12m);
     builder.verify_proof::<InnerC>(&pt_fe, &inner_data_fe, inner_cd_fe);
+    builder.verify_proof::<InnerC>(&pt_ec, &inner_data_ec, inner_cd_ec);
 
     builder.register_public_inputs(&msg_targets);
     builder.register_public_inputs(&sig_targets);
-    builder.register_public_inputs(&pk_targets);
+    for i in 0..pk_targets.len() {
+        builder.register_public_inputs(&pk_targets[i]);
+    }
     builder.print_gate_counts(0);
 
     let data = builder.build::<C>();
@@ -524,13 +659,21 @@ where
     pw.set_proof_with_pis_target(&pt_fe, inner_proof_fe);
     pw.set_verifier_data_target(&inner_data_fe, inner_vd_fe);
 
+    pw.set_proof_with_pis_target(&pt_ec, inner_proof_ec);
+    pw.set_verifier_data_target(&inner_data_ec, inner_vd_ec);
+
     let msg_f = msg.iter().map(|i| F::from_canonical_u8(*i)).collect::<Vec<F>>();
     let sig_f = sig.iter().map(|i| F::from_canonical_u8(*i)).collect::<Vec<F>>();
-    let pk_f = pk.iter().map(|i| F::from_canonical_u8(*i)).collect::<Vec<F>>();
+    let mut pks_f = vec![];
+    for i in 0..pks.len() {
+        let pk_f = pks[i].iter().map(|i| F::from_canonical_u8(*i)).collect::<Vec<F>>();
+        pks_f.push(pk_f);
+    }
     pw.set_target_arr(&msg_targets, &msg_f);
     pw.set_target_arr(&sig_targets, &sig_f);
-    pw.set_target_arr(&pk_targets, &pk_f);
-
+    for i in 0..pk_targets.len() {
+        pw.set_target_arr(&pk_targets[i], &pks_f[i]);
+    }
     let mut timing = TimingTree::new("prove", Level::Debug);
     let s = Instant::now();
     let proof = plonky2_prove::<F, C, D>(&data.prover_only, &data.common, pw, &mut timing)?;
