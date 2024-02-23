@@ -214,6 +214,9 @@ fn ec_aggregate_main<
             public_inputs.push(F::from_canonical_u32(*y));
         }
     }
+    for b in bits.iter() {
+        public_inputs.push(F::from_bool(*b));
+    }
     for x in res[0].0 {
         public_inputs.push(F::from_canonical_u32(x));
     }
@@ -279,7 +282,7 @@ fn aggregate_proof() {
         stark_ec,
         proof_ec,
         config_ec
-    ) = ec_aggregate_main::<F, C, D>(points, res, bits);
+    ) = ec_aggregate_main::<F, C, D>(points, res, bits.clone());
     let recursive_ec = recursive_proof::<F, C, ECAggStark, C, D>(stark_ec, proof_ec, &config_ec, true);
 
     let px1 = res[0];
@@ -425,6 +428,7 @@ fn aggregate_proof() {
         &msg,
         &sig,
         &pks,
+        &bits,
         &recursive_pp1,
         &recursive_ml1,
         &recursive_pp2,
@@ -486,6 +490,7 @@ fn aggregate_recursive_proof<
     msg: &[u8],
     sig: &[u8; SIG_LEN],
     pks: &[[u8; PUB_KEY_LEN]],
+    bits: &[bool],
     inner_pp1: &ProofTuple<F, InnerC, D>,
     inner_ml1: &ProofTuple<F, InnerC, D>,
     inner_pp2: &ProofTuple<F, InnerC, D>,
@@ -518,8 +523,10 @@ where
     let msg_targets = builder.add_virtual_targets(msg.len());
     let sig_targets = builder.add_virtual_target_arr::<SIG_LEN>();
     let mut pk_targets = vec![];
+    let mut bit_targets = vec![];
     for _ in 0..pks.len() {
         pk_targets.push(builder.add_virtual_target_arr::<PUB_KEY_LEN>());
+        bit_targets.push(builder.add_virtual_bool_target_safe());
     }
 
     let hm = hash_to_curve(&mut builder, &msg_targets);
@@ -549,6 +556,7 @@ where
         let pk_point_y = BigUintTarget {
             limbs: (0..N).into_iter().map(|i| U32Target(pt_ec.public_inputs[ecc_aggregate::POINTS + idx*24 + 12 + i])).collect(),
         };
+        builder.connect(pt_ec.public_inputs[ecc_aggregate::BITS + idx], bit_targets[idx].target);
         let pk_point = [pk_point_x, pk_point_y];
         pk_point_check(&mut builder, &pk_point, &pk_targets[idx]);
     }
@@ -635,6 +643,7 @@ where
     builder.register_public_inputs(&sig_targets);
     for i in 0..pk_targets.len() {
         builder.register_public_inputs(&pk_targets[i]);
+        builder.register_public_input(bit_targets[i].target);
     }
     builder.print_gate_counts(0);
 
@@ -673,6 +682,7 @@ where
     pw.set_target_arr(&sig_targets, &sig_f);
     for i in 0..pk_targets.len() {
         pw.set_target_arr(&pk_targets[i], &pks_f[i]);
+        pw.set_bool_target(bit_targets[i], bits[i]);
     }
     let mut timing = TimingTree::new("prove", Level::Debug);
     let s = Instant::now();

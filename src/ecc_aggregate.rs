@@ -15,7 +15,8 @@ pub const TOTAL_COLUMNS: usize = OP + TOT_COL;
 pub const COLUMNS: usize = TOTAL_COLUMNS;
 
 pub const POINTS: usize = 0;
-pub const RES: usize = POINTS + 24*NUM_POINTS;
+pub const BITS: usize = POINTS + 24*NUM_POINTS;
+pub const RES: usize = BITS + NUM_POINTS;
 pub const PUBLIC_INPUTS: usize = RES + 24;
 
 #[derive(Clone, Copy)]
@@ -154,6 +155,9 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for ECCAggStark<F
             );
         }
 
+        yield_constr.constraint_first_row(P::ONES - local_values[A_IS_INF] - public_inputs[BITS]);
+        yield_constr.constraint_first_row(P::ONES - local_values[B_IS_INF] - public_inputs[BITS + 1]);
+
         for idx in 2..NUM_POINTS {
             for i in 0..12 {
                 yield_constr.constraint_transition(
@@ -167,6 +171,11 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for ECCAggStark<F
                     (next_values[OP + G1_POINT_ADDITION_Y2 + i] - public_inputs[POINTS + 24*idx + i + 12])
                 );
             }
+            yield_constr.constraint_transition(
+                next_values[ROW_NUM] *
+                next_values[PIS_IDX + idx] *
+                (P::ONES - next_values[B_IS_INF] - public_inputs[BITS + idx])
+            );
         }
 
         for i in 0..12 {
@@ -326,6 +335,14 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for ECCAggStark<F
             yield_constr.constraint_first_row(builder, c);
         }
 
+        let one = builder.one_extension();
+        let c = builder.sub_extension(one, local_values[A_IS_INF]);
+        let c = builder.sub_extension(c, public_inputs[BITS]);
+        yield_constr.constraint_first_row(builder, c);
+        let c = builder.sub_extension(one, local_values[B_IS_INF]);
+        let c = builder.sub_extension(c, public_inputs[BITS + 1]);
+        yield_constr.constraint_first_row(builder, c);
+
         for idx in 2..NUM_POINTS {
             for i in 0..12 {
                 let mul = builder.mul_extension(next_values[ROW_NUM], next_values[PIS_IDX + idx]);
@@ -337,6 +354,12 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for ECCAggStark<F
                 let c = builder.mul_extension(mul, c);
                 yield_constr.constraint_transition(builder, c);
             }
+            let one = builder.one_extension();
+            let mul = builder.mul_extension(next_values[ROW_NUM], next_values[PIS_IDX + idx]);
+            let c = builder.sub_extension(one, next_values[B_IS_INF]);
+            let c = builder.sub_extension(c, public_inputs[BITS + idx]);
+            let c = builder.mul_extension(mul, c);
+            yield_constr.constraint_transition(builder, c);
         }
 
         for i in 0..12 {
@@ -506,6 +529,9 @@ mod tests {
             for y in &pt[1].0 {
                 public_inputs.push(F::from_canonical_u32(*y));
             }
+        }
+        for b in bits.iter() {
+            public_inputs.push(F::from_bool(*b));
         }
         for x in res[0].0 {
             public_inputs.push(F::from_canonical_u32(x));
