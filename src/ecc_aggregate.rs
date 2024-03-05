@@ -4,7 +4,7 @@ use starky::{constraint_consumer::ConstraintConsumer, evaluation_frame::{StarkEv
 
 use crate::{g1::{add_g1_addition_constraints, add_g1_addition_constraints_ext_circuit, fill_trace_g1_addition, G1_POINT_ADDITION_X1, G1_POINT_ADDITION_X2, G1_POINT_ADDITION_X3, G1_POINT_ADDITION_Y1, G1_POINT_ADDITION_Y2, G1_POINT_ADDITION_Y3, TOT_COL}, native::Fp};
 
-pub const NUM_POINTS: usize = 5;
+pub const NUM_POINTS: usize = 512;
 
 pub const ROW_NUM: usize = 0;
 pub const PIS_IDX: usize = ROW_NUM + 12;
