@@ -291,8 +291,14 @@ fn aggregate_proof() {
                                 })
                                 .collect::<Vec<[Fp;2]>>();
 
-   
-    let bits = vec![true, true, true, false, false, true, true, true, true, true, true, true, false, false, true, true, true, false, true, true, true, false, true, true, false, true, true, false, true, true, false, true, true, true, true, true, true, true, true, true, false, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, false, true, true, true, true, true, true, false, true, true, true, true, true, true, false, true, true, false, true, true, true, false, true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, false, true, true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, false, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true, true, true, true, false, true, false, true, true, false, true, true, true, true, true, false, true, true, false, true, false, true, true, false, true, true, true, true, true, true, true, true, true, false, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true, false, true, true, true, true, false, true, false, true, true, true, true, true, true, true, true, true, false, true, true, true, true, false, false, true, true, true, true, true, true, true, true, false, true, false, true, true, true, true, true, true, true, true, true, true, false, true, true, true, false, true, true, true, false, true, true, true, true, true, false, true, true, false, true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, true, false, true, true, true, true, false, true, true, false, true, true, true, true, false, true, true, false, true, true, true, false, false, true, false, false, true, true, true, true, true, false, false, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true, false, true, true, false, true, true, true, false, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, true, true, false, true, true, false, false, false, true, true, false, true, true, true, true, true, true, false, true, false, true, false, false, true, false, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true, true, true, true, true, false, false, true, true, false, true, true, true, true, true, true];
+    let sync_aggregate = get_sync_aggregate_from_light_client_update_json_str(&light_client_update_json_str).unwrap();
+    
+    let mut bits= Vec::new();
+    for num in sync_aggregate.sync_committee_bits.0 {
+        for j in (0..8).rev(){
+            bits.push((num>>j & 1) == 1);
+        }
+    }
     
     let mut public_keys: Vec<PublicKey>  = Vec::new();
     for i in 0..pub_keys.len(){
@@ -367,7 +373,6 @@ fn aggregate_proof() {
     let px2 = Fp::get_fp_from_biguint(BigUint::from_str("3685416753713387016781088315183077757961620795782546409894578378688607592378376318836054947676345821548104185464507").unwrap());
     let py2 = Fp::get_fp_from_biguint(BigUint::from_str("2662903010277190920397318445793982934971948944000658264905514399707520226534504357969962973775649129045502516118218").unwrap());
 
-    let sync_aggregate = get_sync_aggregate_from_light_client_update_json_str(&light_client_update_json_str).unwrap();
     let sig: [u8;96] = sync_aggregate.sync_committee_signature.0.to_vec().try_into().expect("Incorrect signature length");
     let signature_points = Signature::from_bytes(&sig).unwrap();
 
