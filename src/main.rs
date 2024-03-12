@@ -295,7 +295,7 @@ fn aggregate_proof() {
     
     let mut bits= Vec::new();
     for num in sync_aggregate.sync_committee_bits.0 {
-        for j in (0..8).rev(){
+        for j in 0..8{
             bits.push((num>>j & 1) == 1);
         }
     }
@@ -343,12 +343,12 @@ fn aggregate_proof() {
     let dst = DST.as_bytes();
     let result = hash_to_curve_g2(&signing_root, &dst);
     let q_x1 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.getx().to_string().split(",").collect::<Vec<&str>>()[0][1..95].to_string()).unwrap())),
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.getx().to_string().split(",").collect::<Vec<&str>>()[1][1..95].to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.getx().to_string().split(",").collect::<Vec<&str>>()[0][1..].to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.getx().to_string().split(",").collect::<Vec<&str>>()[1][..96].to_string()).unwrap())),
     ]);
     let q_y1 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.gety().to_string().split(",").collect::<Vec<&str>>()[0][1..95].to_string()).unwrap())),
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.gety().to_string().split(",").collect::<Vec<&str>>()[1][1..95].to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.gety().to_string().split(",").collect::<Vec<&str>>()[0][1..].to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.gety().to_string().split(",").collect::<Vec<&str>>()[1][..96].to_string()).unwrap())),
     ]);
     let q_z1 = Fp2([
         Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
@@ -375,14 +375,13 @@ fn aggregate_proof() {
 
     let sig: [u8;96] = sync_aggregate.sync_committee_signature.0.to_vec().try_into().expect("Incorrect signature length");
     let signature_points = Signature::from_bytes(&sig).unwrap();
-
     let q_x2 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.getx().to_string().split(",").collect::<Vec<&str>>()[0][1..97].to_string()).unwrap())),
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.getx().to_string().split(",").collect::<Vec<&str>>()[1][1..97].to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.getx().to_string().split(",").collect::<Vec<&str>>()[0][1..].to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.getx().to_string().split(",").collect::<Vec<&str>>()[1][..96].to_string()).unwrap())),
     ]);
     let q_y2 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.gety().to_string().split(",").collect::<Vec<&str>>()[0][1..97].to_string()).unwrap())),
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.gety().to_string().split(",").collect::<Vec<&str>>()[1][1..97].to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.gety().to_string().split(",").collect::<Vec<&str>>()[0][1..].to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.gety().to_string().split(",").collect::<Vec<&str>>()[1][..96].to_string()).unwrap())),
     ],);
     let q_z2 = Fp2([
         Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
@@ -705,7 +704,7 @@ where
     let mut timing = TimingTree::new("prove", Level::Debug);
     let s = Instant::now();
     let proof = plonky2_prove::<F, C, D>(&data.prover_only, &data.common, pw, &mut timing)?;
-    println!("Time taken for aggregaet recusrive proof {:?}", s.elapsed());
+    println!("Time taken for aggregate recusrive proof {:?}", s.elapsed());
     timing.print();
 
     data.verify(proof.clone())?;
