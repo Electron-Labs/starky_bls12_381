@@ -4,8 +4,7 @@ use plonky2_crypto::{biguint::{BigUintTarget, CircuitBuilderBiguint}, u32::arith
 use starky::{config::StarkConfig, prover::prove, verifier::verify_stark_proof};
 use crate::{calc_pairing_precomp::{self, PairingPrecompStark}, ecc_aggregate::{self, ECCAggStark}, final_exponentiate::{self, FinalExponentiateStark}, fp12_mul::{self, FP12MulStark}, fp_plonky2::N, g1_plonky2::{pk_point_check, PUB_KEY_LEN}, g2_plonky2::{signature_point_check, SIG_LEN}, hash_to_curve::hash_to_curve, miller_loop::{self, MillerLoopStark}, native::{self, Fp, Fp12, Fp2}};
 use starky::util::trace_rows_to_poly_values;
-use std::{io::Read, str::FromStr, time::Instant};
-use plonky2_circuit_serializer::serializer::CustomGateSerializer;
+use std::{str::FromStr, time::Instant};
 
 use plonky2::plonk::circuit_data::{CircuitConfig, CommonCircuitData, VerifierOnlyCircuitData};
 use plonky2::plonk::proof::ProofWithPublicInputs;
@@ -18,8 +17,7 @@ use plonky2::plonk::prover::prove as plonky2_prove;
 use log::Level;
 use anyhow::Result;
 use serde_json;
-use std::io::BufReader;
-use std::fs::File;
+
 use snowbridge_milagro_bls::{AggregatePublicKey, BLSCurve::bls381::utils::hash_to_curve_g2, PublicKey, Signature};
 use eth_lc_plonky2::utils::{compute_signing_root, get_attested_header_from_light_client_update_json_str, get_sync_aggregate_from_light_client_update_json_str, get_sync_committee_update_from_light_client_update_json_str, BeaconRPCRoutes, BeaconRPCVersion};
 use tree_hash::TreeHash;
@@ -226,7 +224,7 @@ fn ec_aggregate_main<
     (stark, proof, config)
 }
 
-pub fn generate_aggregate_proof 
+fn generate_aggregate_proof 
 (light_client_update_json_str: String, prev_light_client_update_json_str: String, prev_light_client_update_json: serde_json::Value)-> ProofTuple<GoldilocksField,PoseidonGoldilocksConfig,2>
 
 {
@@ -423,214 +421,15 @@ pub fn generate_aggregate_proof
     )
 }
 
-pub fn aggregate_proof() {
-    const D: usize = 2;
-    type C = PoseidonGoldilocksConfig;
-    type F = <C as GenericConfig<D>>::F;
-    
-    type PpStark = PairingPrecompStark<F, D>;
-    type MlStark = MillerLoopStark<F, D>;
-    type Fp12MulStark = FP12MulStark<F, D>;
-    type FeStark = FinalExponentiateStark<F, D>;
-    type ECAggStark = ECCAggStark<F, D>;
-
-    const DST: &str = "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
-    
-    let mut file = File::open("src/light_client_update_period_634.json").unwrap();
-    let mut light_client_update_json_str = String::new();
-    file.read_to_string(&mut light_client_update_json_str)
-        .expect("Unable to read file");
-
-    let prev_file = File::open("src/light_client_update_period_633.json").unwrap();
-    let prev_reader = BufReader::new(prev_file);
-    let prev_light_client_update_json: serde_json::Value = serde_json::from_reader(prev_reader).unwrap();
-
-    let mut prev_file = File::open("src/light_client_update_period_633.json").unwrap();
-    let mut prev_light_client_update_json_str = String::new();
-    prev_file.read_to_string(&mut prev_light_client_update_json_str)
-        .expect("Unable to read file");
-
-    let pub_keys = prev_light_client_update_json["sync_committee_update"]["next_sync_committee"]["pubkeys"]
-                                                                                                                .as_array().unwrap()
-                                                                                                                .iter()
-                                                                                                                .map(|i| i.to_string())
-                                                                                                                .collect::<Vec<String>>();
-
-
-    let points: Vec<[Fp;2]> = pub_keys
-                                .iter()
-                                .map(|i| {
-                                    let res =  PublicKey::from_bytes(&hex::decode(i[3..99].to_string()).unwrap()).unwrap();
-                                    [
-                                        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(res.point.getx().to_string()).unwrap())), 
-                                        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(res.point.gety().to_string()).unwrap()))
-                                    ]
-                                })
-                                .collect::<Vec<[Fp;2]>>();
-
-    let sync_aggregate = get_sync_aggregate_from_light_client_update_json_str(&light_client_update_json_str).unwrap();
-    
-    let mut bits= Vec::new();
-    for num in sync_aggregate.sync_committee_bits.0 {
-        for j in 0..8{
-            bits.push((num>>j & 1) == 1);
-        }
-    }
-    
-    let mut public_keys: Vec<PublicKey>  = Vec::new();
-    for i in 0..pub_keys.len(){
-        if bits[i]  == true{
-            public_keys.push(PublicKey::from_bytes(&hex::decode(pub_keys[i][3..99].to_string()).unwrap()).unwrap());
-        }
-    }
-
-    let apk = AggregatePublicKey::aggregate(&(&public_keys.iter().collect::<Vec<&PublicKey>>())).unwrap();
-    let res: [Fp; 2] = [
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(apk.point.getx().to_string()).unwrap())),
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(apk.point.gety().to_string()).unwrap())),
-    ];
-    println!("ec aggregate stark");
-    let (
-        stark_ec,
-        proof_ec,
-        config_ec
-    ) = ec_aggregate_main::<F, C, D>(points, res, bits.clone());
-    let recursive_ec = recursive_proof::<F, C, ECAggStark, C, D>(stark_ec, proof_ec, &config_ec, true);
-
-    let px1 = res[0];
-    let py1 = res[1];
-
-    let routes = BeaconRPCRoutes{
-        get_block: String::from(""),
-        get_block_header: String::from(""),
-        get_light_client_finality_update: String::from(""),
-        get_light_client_update: String::from(""),
-        get_light_client_update_by_epoch: String::from(""),
-        get_bootstrap: String::from(""),
-        get_state: String::from(""),
-        version: BeaconRPCVersion::V1_5,
-    };
-
-    let domain:[u8;32] = hex::decode("0x07000000628941ef21d1fe8c7134720add10bb91e3b02c007e0046d2472c6695".split_at(2).1).unwrap().try_into().unwrap();
-    let domain_h256 = H256::from(domain);
-
-    let attested_header = get_attested_header_from_light_client_update_json_str(&routes, &light_client_update_json_str).unwrap();
-    let signing_root = compute_signing_root(H256::from(attested_header.tree_hash_root()), domain_h256).0.0;
-
-    let dst = DST.as_bytes();
-    let result = hash_to_curve_g2(&signing_root, &dst);
-    let q_x1 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.getx().to_string().split(",").collect::<Vec<&str>>()[0][1..].to_string()).unwrap())),
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.getx().to_string().split(",").collect::<Vec<&str>>()[1][..96].to_string()).unwrap())),
-    ]);
-    let q_y1 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.gety().to_string().split(",").collect::<Vec<&str>>()[0][1..].to_string()).unwrap())),
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.gety().to_string().split(",").collect::<Vec<&str>>()[1][..96].to_string()).unwrap())),
-    ]);
-    let q_z1 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
-        Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
-    ]);
-    println!("calc_pairing_precomp stark 1");
-    let (
-        stark_pp1,
-        proof_pp1,
-        config_pp1
-    ) = calc_pairing_precomp::<F, C, D>(q_x1, q_y1, q_z1);
-    let recursive_pp1 = recursive_proof::<F, C, PpStark, C, D>(stark_pp1, proof_pp1.clone(), &config_pp1, true);
-
-    println!("miller_loop stark 1");
-    let (
-        stark_ml1,
-        proof_ml1,
-        config_ml1,
-    ) = miller_loop_main::<F, C, D>(px1, py1, q_x1, q_y1, q_z1);
-    let recursive_ml1 = recursive_proof::<F, C, MlStark, C, D>(stark_ml1, proof_ml1.clone(), &config_ml1, true);
-
-    let px2 = Fp::get_fp_from_biguint(BigUint::from_str("3685416753713387016781088315183077757961620795782546409894578378688607592378376318836054947676345821548104185464507").unwrap());
-    let py2 = Fp::get_fp_from_biguint(BigUint::from_str("2662903010277190920397318445793982934971948944000658264905514399707520226534504357969962973775649129045502516118218").unwrap());
-
-    let sig: [u8;96] = sync_aggregate.sync_committee_signature.0.to_vec().try_into().expect("Incorrect signature length");
-    let signature_points = Signature::from_bytes(&sig).unwrap();
-    let q_x2 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.getx().to_string().split(",").collect::<Vec<&str>>()[0][1..].to_string()).unwrap())),
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.getx().to_string().split(",").collect::<Vec<&str>>()[1][..96].to_string()).unwrap())),
-    ]);
-    let q_y2 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.gety().to_string().split(",").collect::<Vec<&str>>()[0][1..].to_string()).unwrap())),
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.gety().to_string().split(",").collect::<Vec<&str>>()[1][..96].to_string()).unwrap())),
-    ],);
-    let q_z2 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
-        Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap()),
-    ]);
-
-    println!("calc_pairing_precomp stark 2");
-    let (
-        stark_pp2,
-        proof_pp2,
-        config_pp2
-    ) = calc_pairing_precomp::<F, C, D>(q_x2, q_y2, q_z2);
-    let recursive_pp2 = recursive_proof::<F, C, PpStark, C, D>(stark_pp2, proof_pp2.clone(), &config_pp2, true);
-
-    println!("miller_loop stark 2");
-    let (
-        stark_ml2,
-        proof_ml2,
-        config_ml2,
-    ) = miller_loop_main::<F, C, D>(px2, py2, q_x2, q_y2, q_z2);
-    let recursive_ml2 = recursive_proof::<F, C, MlStark, C, D>(stark_ml2, proof_ml2.clone(), &config_ml2, true);
-    
-    let ml1_res = native::miller_loop(px1, py1, q_x1, q_y1, q_z1);
-    let ml2_res = native::miller_loop(px2, py2, q_x2, q_y2, q_z2);
-    println!("fp12_mul stark");
-    let (
-        stark_fp12_mul,
-        proof_fp12_mul,
-        config_fp12_mul,
-    ) = fp12_mul_main::<F, C, D>(ml1_res, ml2_res);
-    let recursive_fp12_mul = recursive_proof::<F, C, Fp12MulStark, C, D>(stark_fp12_mul, proof_fp12_mul.clone(), &config_fp12_mul, true);
-
-    let final_exp_input = ml1_res * ml2_res;
-    println!("final exponentiate stark");
-    let (
-        stark_final_exp,
-        proof_final_exp,
-        config_final_exp
-    ) = final_exponentiate_main::<F, C, D>(final_exp_input);
-    let recursive_final_exp = recursive_proof::<F, C, FeStark, C, D>(stark_final_exp, proof_final_exp, &config_final_exp, true);
-
-    let prev_sync_committee_update = get_sync_committee_update_from_light_client_update_json_str(&routes,&prev_light_client_update_json_str).unwrap();
-    let pks = prev_sync_committee_update.next_sync_committee.pubkeys.0
-                                                                                    .iter()
-                                                                                    .map(|i| {
-                                                                                        // Assuming each inner vector has exactly 48 elements
-                                                                                        let mut array = [0u8; 48];
-                                                                                        array.copy_from_slice(&i.0[..48]);
-                                                                                        array
-                                                                                    })
-                                                                                    .collect::<Vec<[u8; 48]>>();
-
-    let (proof, verifier_only, common_data) = aggregate_recursive_proof::<F, C, C, D>(
-        &signing_root,
-        &sig,
-        &pks,
-        &bits,
-        &recursive_pp1,
-        &recursive_ml1,
-        &recursive_pp2,
-        &recursive_ml2,
-        &recursive_fp12_mul,
-        &recursive_final_exp,
-        &recursive_ec,
-    ).unwrap();
-    let proof_bytes = proof.to_bytes();
-    let verifier_bytes = verifier_only.to_bytes().unwrap();
-    let common_bytes = common_data.to_bytes(&CustomGateSerializer).unwrap();
-    std::fs::write("proof_with_pis.bin", &proof_bytes).unwrap();
-    std::fs::write("verifier_only.bin", &verifier_bytes).unwrap();
-    std::fs::write("common_data.bin", &common_bytes).unwrap();
+pub fn aggregate_proof 
+(light_client_update_json_str: String, prev_light_client_update_json_str: String, prev_light_client_update_json: serde_json::Value)-> ProofTuple<GoldilocksField,PoseidonGoldilocksConfig,2>
+{
+    let proof_tuple= std::thread::Builder::new().spawn( || {
+       return  generate_aggregate_proof(light_client_update_json_str, prev_light_client_update_json_str, prev_light_client_update_json);
+    }).unwrap().join().unwrap();
+    return proof_tuple;
 }
+
 
 fn recursive_proof<
     F: plonky2::hash::hash_types::RichField + plonky2::field::extension::Extendable<D>,
