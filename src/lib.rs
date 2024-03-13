@@ -18,12 +18,3 @@ pub mod fp2_plonky2;
 pub mod hash_to_curve;
 pub mod g1_plonky2;
 pub mod g2_plonky2;
-
-use crate::aggregate_proof::aggregate_proof;
-fn main() {
-    env_logger::init();
-    std::thread::Builder::new().spawn(|| {
-        aggregate_proof();
-    }).unwrap().join().unwrap();
-    return;
-}
