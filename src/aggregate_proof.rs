@@ -16,12 +16,9 @@ use plonky2::hash::hash_types::RichField;
 use plonky2::plonk::prover::prove as plonky2_prove;
 use log::Level;
 use anyhow::Result;
-use serde_json;
 
 use snowbridge_milagro_bls::{AggregatePublicKey, BLSCurve::bls381::utils::hash_to_curve_g2, PublicKey, Signature};
-use eth_lc_plonky2::utils::{compute_signing_root, get_attested_header_from_light_client_update_json_str, get_sync_aggregate_from_light_client_update_json_str, get_sync_committee_update_from_light_client_update_json_str, BeaconRPCRoutes, BeaconRPCVersion};
-use tree_hash::TreeHash;
-use eth_types::H256;
+use eth_types::eth2::{SyncAggregate, SyncCommitteeUpdate};
 
 fn calc_pairing_precomp<
     F: RichField + Extendable<D>,
@@ -225,7 +222,12 @@ fn ec_aggregate_main<
 }
 
 fn generate_aggregate_proof 
-(light_client_update_json_str: String, prev_light_client_update_json_str: String, prev_light_client_update_json: serde_json::Value)-> ProofTuple<GoldilocksField,PoseidonGoldilocksConfig,2>
+(
+    pub_keys: Vec<String>,
+    sync_aggregate: SyncAggregate,
+    signing_root: [u8;32],
+    prev_sync_committee_update: SyncCommitteeUpdate,
+)-> ProofTuple<GoldilocksField,PoseidonGoldilocksConfig,2>
 
 {
 
@@ -240,11 +242,6 @@ fn generate_aggregate_proof
     type FeStark = FinalExponentiateStark<F, D>;
     type ECAggStark = ECCAggStark<F, D>;
 
-    let pub_keys = prev_light_client_update_json["sync_committee_update"]["next_sync_committee"]["pubkeys"]
-                                                                                                                .as_array().unwrap()
-                                                                                                                .iter()
-                                                                                                                .map(|i| i.to_string())
-                                                                                                                .collect::<Vec<String>>();
 
 
     let points: Vec<[Fp;2]> = pub_keys
@@ -258,7 +255,6 @@ fn generate_aggregate_proof
                                 })
                                 .collect::<Vec<[Fp;2]>>();
 
-    let sync_aggregate = get_sync_aggregate_from_light_client_update_json_str(&light_client_update_json_str).unwrap();
     
     let mut bits= Vec::new();
     for num in sync_aggregate.sync_committee_bits.0 {
@@ -290,32 +286,15 @@ fn generate_aggregate_proof
     let px1 = res[0];
     let py1 = res[1];
 
-    let routes = BeaconRPCRoutes{
-        get_block: String::from(""),
-        get_block_header: String::from(""),
-        get_light_client_finality_update: String::from(""),
-        get_light_client_update: String::from(""),
-        get_light_client_update_by_epoch: String::from(""),
-        get_bootstrap: String::from(""),
-        get_state: String::from(""),
-        version: BeaconRPCVersion::V1_5,
-    };
-
-    let domain:[u8;32] = hex::decode("0x07000000628941ef21d1fe8c7134720add10bb91e3b02c007e0046d2472c6695".split_at(2).1).unwrap().try_into().unwrap();
-    let domain_h256 = H256::from(domain);
-
-    let attested_header = get_attested_header_from_light_client_update_json_str(&routes, &light_client_update_json_str).unwrap();
-    let signing_root = compute_signing_root(H256::from(attested_header.tree_hash_root()), domain_h256).0.0;
-
     let dst = DST.as_bytes();
     let result = hash_to_curve_g2(&signing_root, &dst);
     let q_x1 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.getx().to_string().split(",").collect::<Vec<&str>>()[0][1..].to_string()).unwrap())),
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.getx().to_string().split(",").collect::<Vec<&str>>()[1][..96].to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.getx().geta().to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.getx().getb().to_string()).unwrap())),
     ]);
     let q_y1 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.gety().to_string().split(",").collect::<Vec<&str>>()[0][1..].to_string()).unwrap())),
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.gety().to_string().split(",").collect::<Vec<&str>>()[1][..96].to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.gety().geta().to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&result.gety().getb().to_string()).unwrap())),
     ]);
     let q_z1 = Fp2([
         Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
@@ -343,12 +322,12 @@ fn generate_aggregate_proof
     let sig: [u8;96] = sync_aggregate.sync_committee_signature.0.to_vec().try_into().expect("Incorrect signature length");
     let signature_points = Signature::from_bytes(&sig).unwrap();
     let q_x2 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.getx().to_string().split(",").collect::<Vec<&str>>()[0][1..].to_string()).unwrap())),
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.getx().to_string().split(",").collect::<Vec<&str>>()[1][..96].to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.getx().geta().to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.getx().getb().to_string()).unwrap())),
     ]);
     let q_y2 = Fp2([
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.gety().to_string().split(",").collect::<Vec<&str>>()[0][1..].to_string()).unwrap())),
-        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.gety().to_string().split(",").collect::<Vec<&str>>()[1][..96].to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.gety().geta().to_string()).unwrap())),
+        Fp::get_fp_from_biguint(BigUint::from_bytes_be(&hex::decode(&signature_points.point.gety().getb().to_string()).unwrap())),
     ],);
     let q_z2 = Fp2([
         Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()),
@@ -389,7 +368,6 @@ fn generate_aggregate_proof
         config_final_exp
     ) = final_exponentiate_main::<F, C, D>(final_exp_input);
     let recursive_final_exp = recursive_proof::<F, C, FeStark, C, D>(stark_final_exp, proof_final_exp, &config_final_exp, true);
-    let prev_sync_committee_update = get_sync_committee_update_from_light_client_update_json_str(&routes,&prev_light_client_update_json_str).unwrap();
     let pks = prev_sync_committee_update.next_sync_committee.pubkeys.0
                                                                                     .iter()
                                                                                     .map(|i| {
@@ -422,10 +400,15 @@ fn generate_aggregate_proof
 }
 
 pub fn aggregate_proof 
-(light_client_update_json_str: String, prev_light_client_update_json_str: String, prev_light_client_update_json: serde_json::Value)-> ProofTuple<GoldilocksField,PoseidonGoldilocksConfig,2>
+(
+    pub_keys: Vec<String>,
+    sync_aggregate: SyncAggregate,
+    signing_root: [u8;32],
+    prev_sync_committee_update: SyncCommitteeUpdate,
+)-> ProofTuple<GoldilocksField,PoseidonGoldilocksConfig,2>
 {
-    let proof_tuple= std::thread::Builder::new().spawn( || {
-       return  generate_aggregate_proof(light_client_update_json_str, prev_light_client_update_json_str, prev_light_client_update_json);
+    let proof_tuple= std::thread::Builder::new().spawn( move || {
+       return  generate_aggregate_proof(pub_keys,sync_aggregate,signing_root,prev_sync_committee_update);
     }).unwrap().join().unwrap();
     return proof_tuple;
 }
