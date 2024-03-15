@@ -6,7 +6,7 @@ use std::io::BufReader;
 use serde_json::{self, Value};
 
 fn main() {
-   
+   env_logger::init();
    let file = File::open("src/light_client_update_period_1053.json").unwrap();
    let reader = BufReader::new(file);
    let light_client_update_json:Value = serde_json::from_reader(reader).expect("unable to read the file");
