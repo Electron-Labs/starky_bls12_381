@@ -37,11 +37,12 @@ On AWS r6a.8xlarge machine:
 |MillerLoopStark|97330|1024|~12.5s|1536789|~242s|~185s|
 |FP12MulStark|60285|16|~220ms|947380|~114s|~92s|
 |FinalExponentiateStark|73527|8192|~92s|1284720|~274s|~185s|
+|ECCAggregate|3339|8192|~3s|64155|~10.3s|~6.2s|
 
 For the aggregate plonky2 circuit:
-* Gates - 37517
-* Build time - ~4.4s
-* Proving time - ~3s
+* Gates - 1284720
+* Build time - ~100s
+* Proving time - ~63s
 
 ## Developer chat
 This work is convered under Ethereum Foundation grant. In case you wish to contribute or collaborate, you can join our ZK builder chat at - https://t.me/+GRX2LF9YSEwyNjQ1

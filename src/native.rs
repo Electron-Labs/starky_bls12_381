@@ -5,7 +5,7 @@ use std::ops::{Add, Sub, Neg, Mul, Div};
 use std::{str::FromStr, vec};
 
 
-use num_bigint::{BigUint, BigInt, Sign, ToBigInt};
+use num_bigint::{BigInt, BigUint, Sign, ToBigInt};
 
 use crate::big_arithmetic::{big_add, big_less_than, self};
 
@@ -210,7 +210,11 @@ pub fn egcd(a: BigUint, b: BigUint) -> BigUint {
     }
     // println!("x {:?}", x);
     let mod_bigint = modulus().to_bigint().unwrap();
-    ((x%mod_bigint.clone())+mod_bigint).to_biguint().unwrap()
+    if x < 0.into() {
+        ((x%mod_bigint.clone())+mod_bigint).to_biguint().unwrap()
+    } else {
+        (x%mod_bigint.clone()).to_biguint().unwrap()
+    }
 }
 
 pub fn mod_inverse(a: BigUint, m: BigUint) -> BigUint {
@@ -235,6 +239,14 @@ pub fn get_u32_vec_from_literal(x: BigUint) -> [u32; 12] {
     x_u32_vec.try_into().unwrap()
 }
 
+pub fn get_u32_vec_from_literal_ref(x: &BigUint) -> [u32; 12] {
+    let mut x_u32_vec: Vec<u32> = x.to_u32_digits();
+    while x_u32_vec.len() != 12 {
+        x_u32_vec.push(0 as u32);
+    }
+    x_u32_vec.try_into().unwrap()
+}
+
 pub fn get_selector_bits_from_u32(x: u32) -> [u32; 12] {
     // assert!(x<=4096);
     let mut res = [0u32; 12];
@@ -247,6 +259,14 @@ pub fn get_selector_bits_from_u32(x: u32) -> [u32; 12] {
 }
 
 pub fn get_u32_vec_from_literal_24(x: BigUint) -> [u32; 24] {
+    let mut x_u32_vec: Vec<u32> = x.to_u32_digits();
+    while x_u32_vec.len() != 24 {
+        x_u32_vec.push(0 as u32);
+    }
+    x_u32_vec.try_into().unwrap()
+}
+
+pub fn get_u32_vec_from_literal_ref_24(x: &BigUint) -> [u32; 24] {
     let mut x_u32_vec: Vec<u32> = x.to_u32_digits();
     while x_u32_vec.len() != 24 {
         x_u32_vec.push(0 as u32);
@@ -573,6 +593,70 @@ impl Sub for Fp2 {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self::Output {
         sub_fp2(self, rhs)
+    }
+}
+
+impl Div for Fp2 {
+    type Output = Self;
+    fn div(self, rhs: Self) -> Self::Output {
+        self * rhs.invert()
+    }
+}
+
+impl Fp2 {
+    pub fn roots_of_unity_8th() -> Vec<Fp2> {
+        vec![
+            Fp2([Fp::one(), Fp::zero()]),
+            Fp2([Fp::zero(), Fp::one()]),
+            Fp2([Fp::get_fp_from_biguint(BigUint::from_str(
+                "1028732146235106349975324479215795277384839936929757896155643118032610843298655225875571310552543014690878354869257"
+            ).unwrap()); 2]),
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "1028732146235106349975324479215795277384839936929757896155643118032610843298655225875571310552543014690878354869257"
+                ).unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "2973677408986561043442465346520108879172042883009249989176415018091420807192182638567116318576472649347015917690530"
+                ).unwrap()),
+            ])
+        ]
+    }
+
+    pub fn etas() -> Vec<Fp2> {
+        vec![
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "1015919005498129635886032702454337503112659152043614931979881174103627376789972962005013361970813319613593700736144"
+                ).unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "1244231661155348484223428017511856347821538750986231559855759541903146219579071812422210818684355842447591283616181"
+                ).unwrap()),
+            ]),
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "2758177894066318909194361808224047808735344068952776325476298594220885430911766052020476810444659821590302988943606"
+                ).unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "1015919005498129635886032702454337503112659152043614931979881174103627376789972962005013361970813319613593700736144"
+                ).unwrap()),
+            ]),
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "1646015993121829755895883253076789309308090876275172350194834453434199515639474951814226234213676147507404483718679"
+                ).unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "1637752706019426886789797193293828301565549384974986623510918743054325021588194075665960171838131772227885159387073"
+                ).unwrap()),
+            ]),
+            Fp2([
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "2364656849202240506627992632442075854991333434964021261821139393069706628902643788776727457290883891810009113172714"
+                ).unwrap()),
+                Fp::get_fp_from_biguint(BigUint::from_str(
+                    "1646015993121829755895883253076789309308090876275172350194834453434199515639474951814226234213676147507404483718679"
+                ).unwrap()),
+            ]),
+        ]
     }
 }
 
@@ -941,6 +1025,27 @@ pub fn mul_fp_12(x: Fp12, y: Fp12) -> Fp12 {
 
     Fp12([x.0, y.0].concat().try_into().unwrap())
 }
+
+pub trait Pow
+where Self: Copy + Mul<Output = Self>,
+{
+    fn pow(&self, one: Self, exp: BigUint) -> Self {
+        if exp == 0u32.into() {
+            return one;
+        }
+        if exp == 1u32.into() {
+            return *self;
+        }
+        if exp.clone()%2u32 == 1u32.into() {
+            return *self * self.pow(one, exp-1u32)
+        }
+        let d = self.pow(one, exp>>1);
+        d * d
+    }
+}
+
+impl<T> Pow for T
+where T: Copy + Mul<Output = Self> {}
 
 impl Fp2 {
 
@@ -1372,23 +1477,23 @@ pub fn pairing(p_x: Fp, p_y: Fp, q_x: Fp2, q_y: Fp2, q_z: Fp2) -> Fp12 {
 pub fn verify_bls_signatures() -> bool {
     // Public key
     // Splits into little endian
-    let pk_x = BigUint::from_str("1216495682195235861952885506871698490232894470117269383940381148575524314493849307811227440691167647909822763414941").unwrap().to_u32_digits();
-    let pk_y = BigUint::from_str("2153848155426317245700560287567131132765685008362732985860101000686875894603366983854567186180519945327668975076337").unwrap().to_u32_digits();
+    let pk_x = BigUint::from_str("2620359726099670991095913421423408052907220385587653382880494211997835858894431070728023161812841650498384724513574").unwrap().to_u32_digits();
+    let pk_y = BigUint::from_str("3516737663249789719313994746945990853755171862112391852604784999536233979171013701039178918880615112139780777770781").unwrap().to_u32_digits();
     // Hashed message in g2
-    let hm_x1 = BigUint::from_str("2640504383352253166624742184946918613522392710628037055952404127879364455194422343335555527925815834654853618706317").unwrap().to_u32_digits();
-    let hm_x2 = BigUint::from_str("3512267754584411844719003222712149130451230828216813699108449950001725181635151866954918805409098715392393669496763").unwrap().to_u32_digits();
-    let hm_y1 = BigUint::from_str("1819141142055458317635768413798746444112487913647217792452244858223746035103974374419118545961357374373926748974853").unwrap().to_u32_digits();
-    let hm_y2 = BigUint::from_str("2023172707753915325613231249141956147838197708174300845595677034762003254300804275953249871078804883738174492552197").unwrap().to_u32_digits();
-    let hm_z1 = BigUint::from_str("2090317837686632453881173016321367129380434356038329533464948735487686003804511165163385664859654015333500347340874").unwrap().to_u32_digits();
-    let hm_z2 = BigUint::from_str("3589273988676721566549754197317344469206294207551897598521700599244392528027952567094835689880190836504376087662460").unwrap().to_u32_digits();
+    let hm_x1 = BigUint::from_str("2260803321181951703309420903406460477209912434020120381027413359130883713514969717876465885091628521232768207917010").unwrap().to_u32_digits();
+    let hm_x2 = BigUint::from_str("2651754974217764549573984422821173864573267897233450902768900290919635595830847280035238812354259899816422437732519").unwrap().to_u32_digits();
+    let hm_y1 = BigUint::from_str("98328085801950751198634977711657076320088798571641012335466428770177401024922163125657710674003178075431656844523").unwrap().to_u32_digits();
+    let hm_y2 = BigUint::from_str("1156585784149709375944843577113354173925120574246839648967751052400396372157500751188298724114933365921247443786825").unwrap().to_u32_digits();
+    let hm_z1 = BigUint::from_str("1").unwrap().to_u32_digits();
+    let hm_z2 = BigUint::from_str("0").unwrap().to_u32_digits();
     // Generator
     let gx = BigUint::from_str("3685416753713387016781088315183077757961620795782546409894578378688607592378376318836054947676345821548104185464507").unwrap().to_u32_digits();
     let gy = BigUint::from_str("1339506544944476473020471379941921221584933875938349620426543736416511423956333506472724655353366534992391756441569").unwrap().to_u32_digits();
     // Signature
-    let s_x1 = BigUint::from_str("2623971017592927791661443929103810896934774536775525535423614243457684905034147949323467412106133456094022067726851").unwrap().to_u32_digits();
-    let s_x2 = BigUint::from_str("2791552278788393998835490815906332650385266234676766868498515429583366873304026057923442494886948609285829286788356").unwrap().to_u32_digits();
-    let s_y1 = BigUint::from_str("1392880899106984160179818268515214962705329372907929072981217458923190202387659009520579695608141992620405977748755").unwrap().to_u32_digits();
-    let s_y2 = BigUint::from_str("2607207514294746608778464853061537277878553458184247374568293197687045701239874275081091959210122811260239467513958").unwrap().to_u32_digits();
+    let s_x1 = BigUint::from_str("1836830352577417292089156350591626007357750969609299199820146458689304398967104037069103513169938118550765216427090").unwrap().to_u32_digits();
+    let s_x2 = BigUint::from_str("2100427494885604888487796981102940167438916035063712025295231442815788486916593575072180414962669967540847907858502").unwrap().to_u32_digits();
+    let s_y1 = BigUint::from_str("2555154678035007654633840738122526356989849358171638629627190730328888205299908476410927833296830659413727831906911").unwrap().to_u32_digits();
+    let s_y2 = BigUint::from_str("697448450483092846649680958149948400499140883635140106996999493850809967308993531752440334328367413010709405099565").unwrap().to_u32_digits();
     let s_z1 = BigUint::from_str("1").unwrap().to_u32_digits();
     let s_z2 = BigUint::from_str("0").unwrap().to_u32_digits();
 

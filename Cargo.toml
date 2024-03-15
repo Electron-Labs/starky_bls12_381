@@ -6,8 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-plonky2 = {git = "https://github.com/Electron-Labs/plonky2.git", rev = "71dff6e9827f501bc59416dc25ce06c4aec030ab"}
-starky = {git = "https://github.com/Electron-Labs/plonky2.git", rev = "71dff6e9827f501bc59416dc25ce06c4aec030ab"}
+plonky2 = { git = "https://github.com/Electron-Labs/plonky2", branch = "derive_bn254_from_ff"}
+starky = { git = "https://github.com/Electron-Labs/plonky2", branch = "derive_bn254_from_ff"}
+plonky2_crypto = { git = "https://github.com/Electron-Labs/plonky2-crypto" }
 anyhow = "1.0.40"
 hex = "0.4"
 to-binary = "0.4.0"
@@ -15,6 +16,16 @@ num-bigint = "0.4.4"
 itertools = "0.10.3"
 env_logger = { version = "0.9.0", default-features = false }
 log = { version = "0.4.14", default-features = false }
+plonky2-circuit-serializer = { git = "https://github.com/Electron-Labs/plonky2-circuit-serializer.git" }
+serde_json = "1.0.114"
+snowbridge-milagro-bls = "1.5.4"
+eth-types = { git = "https://github.com/aurora-is-near/rainbow-bridge"}
+tree_hash = "0.5"
+tree_hash_derive = "0.5"
 
 [profile.test]
 opt-level = 3
+
+[patch]
+[patch.crates-io]
+parity-secp256k1 = { git = "https://github.com/paritytech/rust-secp256k1.git" }
