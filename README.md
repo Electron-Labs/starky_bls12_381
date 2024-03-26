@@ -45,4 +45,4 @@ For the aggregate plonky2 circuit:
 * Proving time - ~63s
 
 ## Developer chat
-This work is convered under Ethereum Foundation grant. In case you wish to contribute or collaborate, you can join our ZK builder chat at - https://t.me/+GRX2LF9YSEwyNjQ1
+This work is convered under Ethereum Foundation grant. In case you wish to contribute or collaborate, you can join our ZK builder chat at - https://t.me/+leHcoDWYoaFiZDM1
